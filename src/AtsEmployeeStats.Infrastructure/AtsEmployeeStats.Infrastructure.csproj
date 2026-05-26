@@ -1,0 +1,26 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\AtsEmployeeStats.Application\AtsEmployeeStats.Application.csproj" />
+    <ProjectReference Include="..\AtsEmployeeStats.Domain\AtsEmployeeStats.Domain.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="SIIDecryptSharp" Version="1.0.1" />
+    <PackageReference Include="zlib-msvc-x64" Version="1.2.11.8900" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(OS)' == 'Windows_NT'">
+    <None Include="$(NuGetPackageRoot)zlib-msvc-x64\1.2.11.8900\build\native\bin_release\zlib.dll"
+          Link="zlib.dll"
+          CopyToOutputDirectory="PreserveNewest"
+          CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+</Project>
