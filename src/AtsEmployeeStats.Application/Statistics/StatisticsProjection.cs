@@ -40,10 +40,7 @@ public static class StatisticsProjection
 
         var driverToGarage = BuildReverseLookup(garages, "employees", "drivers");
         var truckToGarage = BuildReverseLookup(garages, "vehicles");
-        var driverToTruck = drivers
-            .Select(driver => (DriverId: driver.Id, TruckId: FirstKnownValue(driver, "assigned_truck", "truck", "vehicle")))
-            .Where(pair => !string.IsNullOrWhiteSpace(pair.TruckId))
-            .ToDictionary(pair => pair.DriverId, pair => pair.TruckId!, StringComparer.OrdinalIgnoreCase);
+        var driverToTruck = BuildDriverTruckLookup(drivers, trucks, garages);
         var truckToDriver = driverToTruck
             .GroupBy(pair => pair.Value, StringComparer.OrdinalIgnoreCase)
             .ToDictionary(group => group.Key, group => group.First().Key, StringComparer.OrdinalIgnoreCase);
@@ -302,6 +299,49 @@ public static class StatisticsProjection
                 .Where(value => !string.IsNullOrWhiteSpace(value)))
             {
                 lookup.TryAdd(childId, owner.Id);
+            }
+        }
+
+        return lookup;
+    }
+
+    private static Dictionary<string, string> BuildDriverTruckLookup(
+        IReadOnlyCollection<SiiUnit> drivers,
+        IReadOnlyCollection<SiiUnit> trucks,
+        IReadOnlyCollection<SiiUnit> garages)
+    {
+        var lookup = drivers
+            .Select(driver => (DriverId: driver.Id, TruckId: FirstKnownValue(driver, "assigned_truck", "truck", "vehicle")))
+            .Where(pair => !string.IsNullOrWhiteSpace(pair.TruckId))
+            .ToDictionary(pair => pair.DriverId, pair => pair.TruckId!, StringComparer.OrdinalIgnoreCase);
+
+        foreach (var truck in trucks)
+        {
+            var driverId = FirstKnownValue(truck, "assigned_driver", "driver", "employee");
+            if (!string.IsNullOrWhiteSpace(driverId))
+            {
+                lookup.TryAdd(driverId, truck.Id);
+            }
+        }
+
+        foreach (var garage in garages)
+        {
+            var garageDrivers = garage.GetArray("drivers");
+            if (garageDrivers.Count == 0)
+            {
+                garageDrivers = garage.GetArray("employees");
+            }
+
+            var garageTrucks = garage.GetArray("vehicles");
+            var count = Math.Min(garageDrivers.Count, garageTrucks.Count);
+            for (var index = 0; index < count; index++)
+            {
+                var driverId = garageDrivers[index];
+                var truckId = garageTrucks[index];
+                if (!string.IsNullOrWhiteSpace(driverId) && !string.IsNullOrWhiteSpace(truckId))
+                {
+                    lookup.TryAdd(driverId, truckId);
+                }
             }
         }
 

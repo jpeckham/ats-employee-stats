@@ -291,6 +291,42 @@ public sealed class StatisticsProjectionTests
     }
 
     [Fact]
+    public void Build_infers_driver_truck_assignment_from_garage_array_positions()
+    {
+        var snapshot = new SaveSnapshot(
+            "garage-array-assignment",
+            new DateTimeOffset(2026, 5, 26, 8, 0, 0, TimeSpan.Zero),
+            SiiSaveParser.Parse("""
+                SiiNunit
+                {
+                garage : garage.phoenix {
+                  city: phoenix
+                  drivers: 1
+                  drivers[0]: driver.alice
+                  vehicles: 1
+                  vehicles[0]: truck.alice
+                }
+
+                driver_ai : driver.alice {
+                  profit_log[0]: 1000
+                }
+
+                vehicle : truck.alice {
+                  license_plate: "ATS-100"
+                }
+                }
+                """));
+
+        var company = Assert.Single(StatisticsProjection.Build([snapshot]).Companies);
+
+        var driver = Assert.Single(company.Drivers);
+        Assert.Equal("truck.alice", driver.TruckId);
+
+        var truck = Assert.Single(company.Trucks);
+        Assert.Equal("driver.alice", truck.DriverId);
+    }
+
+    [Fact]
     public void Build_treats_profit_log_entries_as_completed_missions()
     {
         var snapshot = new SaveSnapshot(

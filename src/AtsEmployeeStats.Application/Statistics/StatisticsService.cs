@@ -9,6 +9,11 @@ public sealed class StatisticsService(ISaveSnapshotSource saveSnapshotSource)
         CancellationToken cancellationToken,
         IProgress<SaveLoadProgress>? progress = null)
     {
+        if (saveSnapshotSource is IStatisticsQuerySource querySource)
+        {
+            return await querySource.ReadStatisticsAsync(cancellationToken, progress);
+        }
+
         var snapshots = await saveSnapshotSource.ReadAllAsync(cancellationToken, progress);
         return StatisticsProjection.Build(snapshots);
     }
