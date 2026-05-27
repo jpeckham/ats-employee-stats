@@ -1,10 +1,11 @@
 using AtsEmployeeStats.Domain.Saves;
 using AtsEmployeeStats.Domain.Statistics;
 using System.Text;
+using System.Text.RegularExpressions;
 
 namespace AtsEmployeeStats.Application.Statistics;
 
-public static class StatisticsProjection
+public static partial class StatisticsProjection
 {
     public static AtsStatistics Build(IReadOnlyCollection<SaveSnapshot> snapshots)
     {
@@ -80,12 +81,22 @@ public static class StatisticsProjection
             .ToList();
 
         var truckStats = trucks
-            .Select(truck => new TruckStatistic(
-                truck.Id,
-                FirstKnownValue(truck, "license_plate", "name") ?? truck.Id,
-                SumProfitLog(truck, unitsById),
-                truckToGarage.GetValueOrDefault(truck.Id),
-                truckToDriver.GetValueOrDefault(truck.Id)))
+            .Select(truck =>
+            {
+                var licensePlate = CleanLicensePlate(FirstKnownValue(truck, "license_plate", "name"));
+                var definitionPath = ExtractTruckDefinitionPath(truck, unitsById);
+                var modelName = FormatTruckModelName(definitionPath);
+
+                return new TruckStatistic(
+                    truck.Id,
+                    BuildTruckDisplayName(truck.Id, modelName, licensePlate),
+                    SumProfitLog(truck, unitsById),
+                    truckToGarage.GetValueOrDefault(truck.Id),
+                    truckToDriver.GetValueOrDefault(truck.Id),
+                    licensePlate,
+                    modelName,
+                    definitionPath);
+            })
             .OrderByDescending(truck => truck.Profit)
             .ThenBy(truck => truck.DisplayName, StringComparer.OrdinalIgnoreCase)
             .ToList();
@@ -116,7 +127,8 @@ public static class StatisticsProjection
             driverStats,
             truckStats,
             missionStats,
-            trailerStats);
+            trailerStats,
+            BuildDriverRecentJobs(drivers, unitsById, driverToTruck));
     }
 
     private static bool IsOwnedGarage(SiiUnit garage)
@@ -310,9 +322,10 @@ public static class StatisticsProjection
         {
             foreach (var childId in arrayNames
                 .SelectMany(owner.GetArray)
+                .Select(CleanSiiValue)
                 .Where(value => !string.IsNullOrWhiteSpace(value)))
             {
-                lookup.TryAdd(childId, owner.Id);
+                lookup.TryAdd(childId!, owner.Id);
             }
         }
 
@@ -350,8 +363,8 @@ public static class StatisticsProjection
             var count = Math.Min(garageDrivers.Count, garageTrucks.Count);
             for (var index = 0; index < count; index++)
             {
-                var driverId = garageDrivers[index];
-                var truckId = garageTrucks[index];
+                var driverId = CleanSiiValue(garageDrivers[index]);
+                var truckId = CleanSiiValue(garageTrucks[index]);
                 if (!string.IsNullOrWhiteSpace(driverId) && !string.IsNullOrWhiteSpace(truckId))
                 {
                     lookup.TryAdd(driverId, truckId);
@@ -364,13 +377,17 @@ public static class StatisticsProjection
 
     private static long SumProfitLog(SiiUnit unit, IReadOnlyDictionary<string, SiiUnit> unitsById)
     {
-        var inlineProfit = unit.GetArray("profit_log").Select(ParseLong).Sum();
+        var inlineProfit = unit.GetArray("profit_log")
+            .Select(CleanSiiValue)
+            .Where(value => value is not null)
+            .Select(value => ParseLong(value!))
+            .Sum();
         if (inlineProfit != 0)
         {
             return inlineProfit;
         }
 
-        var profitLogId = unit.GetValue("profit_log");
+        var profitLogId = FirstKnownValue(unit, "profit_log");
         if (profitLogId is null || !unitsById.TryGetValue(profitLogId, out var profitLog))
         {
             return 0;
@@ -378,8 +395,9 @@ public static class StatisticsProjection
 
         return profitLog
             .GetArray("stats_data")
-            .Where(unitsById.ContainsKey)
-            .Select(entryId => ProfitFromEntry(unitsById[entryId]))
+            .Select(CleanSiiValue)
+            .Where(entryId => entryId is not null && unitsById.ContainsKey(entryId))
+            .Select(entryId => ProfitFromEntry(unitsById[entryId!]))
             .Sum();
     }
 
@@ -393,8 +411,68 @@ public static class StatisticsProjection
         return revenue - expenses;
     }
 
+    private static IReadOnlyList<DriverRecentJobStatistic> BuildDriverRecentJobs(
+        IReadOnlyCollection<SiiUnit> drivers,
+        IReadOnlyDictionary<string, SiiUnit> unitsById,
+        IReadOnlyDictionary<string, string> driverToTruck) =>
+        drivers
+            .SelectMany(driver => BuildDriverRecentJobs(driver, unitsById, driverToTruck.GetValueOrDefault(driver.Id)))
+            .OrderByDescending(job => job.TimestampDay ?? int.MinValue)
+            .ThenByDescending(job => job.Profit)
+            .ThenBy(job => job.Id, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+    private static IEnumerable<DriverRecentJobStatistic> BuildDriverRecentJobs(
+        SiiUnit driver,
+        IReadOnlyDictionary<string, SiiUnit> unitsById,
+        string? currentTruckId)
+    {
+        var profitLogId = FirstKnownValue(driver, "profit_log");
+        if (profitLogId is null || !unitsById.TryGetValue(profitLogId, out var profitLog))
+        {
+            yield break;
+        }
+
+        foreach (var entryId in profitLog.GetArray("stats_data").Select(CleanSiiValue).Where(value => value is not null))
+        {
+            if (!unitsById.TryGetValue(entryId!, out var entry) || !entry.TypeEquals("profit_log_entry"))
+            {
+                continue;
+            }
+
+            var revenue = FirstLongValue(entry, "revenue", "income", "profit", "pay");
+            var expenses = FirstLongValue(entry, "wage") +
+                FirstLongValue(entry, "maintenance") +
+                FirstLongValue(entry, "fuel");
+            var cargo = FirstKnownValue(entry, "cargo", "cargo_id");
+            var sourceCity = FirstKnownValue(entry, "source_city", "source_city_id", "origin_city");
+            var targetCity = FirstKnownValue(entry, "destination_city", "target_city", "destination_city_id");
+
+            if (revenue == 0 &&
+                string.IsNullOrWhiteSpace(cargo) &&
+                string.IsNullOrWhiteSpace(sourceCity) &&
+                string.IsNullOrWhiteSpace(targetCity))
+            {
+                continue;
+            }
+
+            yield return new DriverRecentJobStatistic(
+                entry.Id,
+                driver.Id,
+                FirstKnownValue(entry, "truck", "vehicle") ?? currentTruckId,
+                cargo,
+                sourceCity,
+                targetCity,
+                revenue,
+                expenses,
+                revenue - expenses,
+                FirstIntValue(entry, "distance"),
+                FirstIntValue(entry, "timestamp_day"));
+        }
+    }
+
     private static string? GetArrayValue(IReadOnlyList<string> values, int index) =>
-        index >= 0 && index < values.Count ? values[index] : null;
+        index >= 0 && index < values.Count ? CleanSiiValue(values[index]) : null;
 
     private static string? CityFromCompany(string? companyId)
     {
@@ -428,7 +506,7 @@ public static class StatisticsProjection
 
         foreach (var key in keys)
         {
-            var value = unit.GetValue(key);
+            var value = CleanSiiValue(unit.GetValue(key));
             if (!string.IsNullOrWhiteSpace(value))
             {
                 return value;
@@ -442,7 +520,7 @@ public static class StatisticsProjection
     {
         foreach (var key in keys)
         {
-            var value = unit.GetValue(key);
+            var value = CleanSiiValue(unit.GetValue(key));
             if (!string.IsNullOrWhiteSpace(value))
             {
                 return ParseLong(value);
@@ -454,6 +532,173 @@ public static class StatisticsProjection
 
     private static long ParseLong(string value) =>
         long.TryParse(value, out var parsed) ? parsed : 0;
+
+    private static int? FirstIntValue(SiiUnit unit, params string[] keys)
+    {
+        foreach (var key in keys)
+        {
+            var value = CleanSiiValue(unit.GetValue(key));
+            if (!string.IsNullOrWhiteSpace(value) && int.TryParse(value, out var parsed))
+            {
+                return parsed;
+            }
+        }
+
+        return null;
+    }
+
+    private static string? CleanSiiValue(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        var trimmed = value.Trim();
+        return trimmed.Equals("null", StringComparison.OrdinalIgnoreCase) ||
+            trimmed.Equals("nil", StringComparison.OrdinalIgnoreCase)
+            ? null
+            : trimmed;
+    }
+
+    private static string? CleanLicensePlate(string? value)
+    {
+        value = CleanSiiValue(value);
+        if (value is null)
+        {
+            return null;
+        }
+
+        var parts = value.Split('|', 2);
+        var plate = MarkupRegex().Replace(parts[0], string.Empty);
+        plate = WhitespaceRegex().Replace(plate, " ").Trim();
+        if (string.IsNullOrWhiteSpace(plate))
+        {
+            return null;
+        }
+
+        if (parts.Length == 1)
+        {
+            return plate;
+        }
+
+        var state = FormatStateName(parts[1]);
+        return string.IsNullOrWhiteSpace(state) ? plate : $"{plate} {state}";
+    }
+
+    private static string? ExtractTruckDefinitionPath(SiiUnit truck, IReadOnlyDictionary<string, SiiUnit> unitsById)
+    {
+        foreach (var accessoryId in truck.GetArray("accessories").Select(CleanSiiValue).Where(value => value is not null))
+        {
+            if (!unitsById.TryGetValue(accessoryId!, out var accessory))
+            {
+                continue;
+            }
+
+            var dataPath = FirstKnownValue(accessory, "data_path");
+            if (dataPath is not null &&
+                dataPath.StartsWith("/def/vehicle/truck/", StringComparison.OrdinalIgnoreCase) &&
+                dataPath.EndsWith("/data.sii", StringComparison.OrdinalIgnoreCase))
+            {
+                return dataPath;
+            }
+        }
+
+        return null;
+    }
+
+    private static string? FormatTruckModelName(string? definitionPath)
+    {
+        definitionPath = CleanSiiValue(definitionPath);
+        if (definitionPath is null)
+        {
+            return null;
+        }
+
+        const string prefix = "/def/vehicle/truck/";
+        const string suffix = "/data.sii";
+        if (!definitionPath.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) ||
+            !definitionPath.EndsWith(suffix, StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        var modelId = definitionPath[prefix.Length..^suffix.Length];
+        var parts = modelId.Split('.', StringSplitOptions.RemoveEmptyEntries);
+        return parts.Length == 0
+            ? null
+            : string.Join(' ', parts.SelectMany(FormatTruckModelPart));
+    }
+
+    private static string BuildTruckDisplayName(string truckId, string? modelName, string? licensePlate)
+    {
+        if (!string.IsNullOrWhiteSpace(modelName) && !string.IsNullOrWhiteSpace(licensePlate))
+        {
+            return $"{modelName} - {licensePlate}";
+        }
+
+        return modelName ?? licensePlate ?? truckId;
+    }
+
+    private static IEnumerable<string> FormatTruckModelPart(string value)
+    {
+        var known = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["intnational"] = "International",
+            ["westernstar"] = "Western Star",
+            ["freightliner"] = "Freightliner",
+            ["kenworth"] = "Kenworth",
+            ["peterbilt"] = "Peterbilt",
+            ["volvo"] = "Volvo",
+            ["mack"] = "Mack"
+        };
+
+        if (known.TryGetValue(value, out var formatted))
+        {
+            yield return formatted;
+            yield break;
+        }
+
+        foreach (var token in value.Split('_', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var spaced = LetterDigitBoundaryRegex().Replace(token, "$1 $2");
+            foreach (var part in spaced.Split(' ', StringSplitOptions.RemoveEmptyEntries))
+            {
+                yield return FormatTruckModelToken(part);
+            }
+        }
+    }
+
+    private static string FormatTruckModelToken(string value)
+    {
+        if (value.Length == 0)
+        {
+            return value;
+        }
+
+        if (value.Any(char.IsDigit) && value.Any(char.IsAsciiLetter))
+        {
+            return value.ToUpperInvariant();
+        }
+
+        return char.ToUpperInvariant(value[0]) + value[1..];
+    }
+
+    private static string FormatStateName(string value) =>
+        string.Join(' ', value
+            .Trim()
+            .TrimStart('_')
+            .Split(['_', '-', ' '], StringSplitOptions.RemoveEmptyEntries)
+            .Select(part => part.Length == 0 ? part : char.ToUpperInvariant(part[0]) + part[1..].ToLowerInvariant()));
+
+    [GeneratedRegex("<[^>]+>")]
+    private static partial Regex MarkupRegex();
+
+    [GeneratedRegex("\\s+")]
+    private static partial Regex WhitespaceRegex();
+
+    [GeneratedRegex("([A-Za-z]{2,})([0-9])")]
+    private static partial Regex LetterDigitBoundaryRegex();
 }
 
 internal sealed record HistoricalMission(MissionStatistic Statistic, string DeduplicationKey, DateTimeOffset LastWritten);

@@ -28,6 +28,15 @@ public static class DashboardViewModel
             .Where(mission => IdEquals(mission.DriverId, driverId))
             .ToList();
 
+    public static IReadOnlyList<DriverRecentJobDto> GetDriverRecentJobs(CompanyDto company, string driverId) =>
+        (company.RecentDriverJobs ?? [])
+            .Where(job => IdEquals(job.DriverId, driverId))
+            .OrderByDescending(job => job.TimestampDay ?? int.MinValue)
+            .ThenByDescending(job => job.Profit)
+            .ThenBy(job => job.Id, StringComparer.OrdinalIgnoreCase)
+            .Take(4)
+            .ToList();
+
     public static IReadOnlyList<TruckDto> GetDriverTrucks(CompanyDto company, string driverId)
     {
         var driver = FindDriver(company, driverId);
@@ -56,6 +65,16 @@ public static class DashboardViewModel
         return company.Trucks
             .Where(truck => truckIds.Contains(truck.Id))
             .ToList();
+    }
+
+    public static string GetTruckDisplayName(CompanyDto company, string? truckId)
+    {
+        if (string.IsNullOrWhiteSpace(truckId))
+        {
+            return "-";
+        }
+
+        return company.Trucks.FirstOrDefault(truck => IdEquals(truck.Id, truckId))?.DisplayName ?? truckId;
     }
 
     private static bool IdEquals(string? left, string? right) =>

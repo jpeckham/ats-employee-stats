@@ -100,7 +100,7 @@
                                 <td>@driver.DisplayName</td>
                                 <td>@Money(driver.Profit)</td>
                                 <td>@Money(driver.ProfitPerDay)</td>
-                                <td>@(driver.TruckId ?? "-")</td>
+                                <td>@DashboardViewModel.GetTruckDisplayName(SelectedCompany, driver.TruckId)</td>
                                 <td>@driver.JobCount</td>
                                 <td class="action-cell">
                                     <NavLink class="button-link" href="@($"/companies/{Segment(SelectedCompany.Id)}/garages/{Segment(SelectedGarage.Id)}/drivers/{Segment(driver.Id)}")">View</NavLink>

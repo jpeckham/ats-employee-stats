@@ -88,7 +88,7 @@
             </div>
             <div>
                 <span>Current truck</span>
-                <strong>@(SelectedDriver.TruckId ?? "-")</strong>
+                <strong>@DashboardViewModel.GetTruckDisplayName(SelectedCompany, SelectedDriver.TruckId)</strong>
             </div>
         </section>
 
@@ -100,6 +100,29 @@
         <section class="content-stack">
             @if (_activeTab == "jobs")
             {
+                var recentJobs = DashboardViewModel.GetDriverRecentJobs(SelectedCompany, SelectedDriver.Id);
+                if (recentJobs.Count > 0)
+                {
+                    <table>
+                        <caption>Recent jobs - @SelectedDriver.DisplayName</caption>
+                        <thead>
+                            <tr><th>Route</th><th>Cargo</th><th>Truck</th><th>Distance</th><th>Profit</th></tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var job in recentJobs)
+                            {
+                                <tr>
+                                    <td>@(job.SourceCity ?? "?") -&gt; @(job.TargetCity ?? "?")</td>
+                                    <td>@(job.Cargo ?? "-")</td>
+                                    <td>@DashboardViewModel.GetTruckDisplayName(SelectedCompany, job.TruckId)</td>
+                                    <td>@Distance(job.Distance)</td>
+                                    <td>@Money(job.Profit)</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                }
+
                 <table>
                     <caption>Jobs - @SelectedDriver.DisplayName</caption>
                     <thead>
@@ -112,7 +135,7 @@
                                 <td>@(mission.SourceCity ?? "?") -&gt; @(mission.TargetCity ?? "?")</td>
                                 <td>@(mission.Cargo ?? "-")</td>
                                 <td>@(mission.TrailerType ?? "-")</td>
-                                <td>@(mission.TruckId ?? "-")</td>
+                                <td>@DashboardViewModel.GetTruckDisplayName(SelectedCompany, mission.TruckId)</td>
                                 <td>@Money(mission.Profit)</td>
                             </tr>
                         }
@@ -175,4 +198,7 @@
 
     private string TabClass(string tab) =>
         _activeTab == tab ? "active" : string.Empty;
+
+    private static string Distance(int? miles) =>
+        miles is null ? "-" : $"{miles:N0} mi";
 }

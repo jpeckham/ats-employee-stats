@@ -38,7 +38,10 @@ public static class StatisticsDashboardMapper
                 truck.DisplayName,
                 truck.Profit,
                 truck.GarageId,
-                truck.DriverId)).ToList(),
+                truck.DriverId,
+                truck.LicensePlate,
+                truck.ModelName,
+                truck.DefinitionPath)).ToList(),
             company.Missions.Select(mission => new MissionDto(
                 mission.Id,
                 mission.DriverId,
@@ -47,11 +50,24 @@ public static class StatisticsDashboardMapper
                 mission.Cargo,
                 mission.SourceCity,
                 mission.TargetCity,
-                mission.Profit)).ToList(),
+                mission.Profit,
+                mission.TimestampDay)).ToList(),
             company.TrailerTypes.Select(trailerType => new TrailerTypeDto(
                 trailerType.Id,
                 trailerType.Profit,
-                trailerType.MissionCount)).ToList());
+                trailerType.MissionCount)).ToList(),
+            company.RecentDriverJobs.Select(job => new DriverRecentJobDto(
+                job.Id,
+                job.DriverId,
+                job.TruckId,
+                job.Cargo,
+                job.SourceCity,
+                job.TargetCity,
+                job.Revenue,
+                job.Expenses,
+                job.Profit,
+                job.Distance,
+                job.TimestampDay)).ToList());
 
     private static long MoneyPerDay(long value, int rangeDays) =>
         (long)Math.Round(value / (decimal)rangeDays, MidpointRounding.AwayFromZero);

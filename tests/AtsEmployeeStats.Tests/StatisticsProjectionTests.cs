@@ -327,6 +327,175 @@ public sealed class StatisticsProjectionTests
     }
 
     [Fact]
+    public void Build_normalizes_pseudo_null_assignments_and_extracts_recent_driver_jobs()
+    {
+        var snapshot = new SaveSnapshot(
+            "recent-driver-jobs",
+            new DateTimeOffset(2026, 5, 26, 10, 0, 0, TimeSpan.Zero),
+            SiiSaveParser.Parse("""
+                SiiNunit
+                {
+                garage : garage.phoenix {
+                  city: phoenix
+                  drivers: 1
+                  drivers[0]: driver.alice
+                  vehicles: 1
+                  vehicles[0]: truck.alice
+                }
+
+                driver_ai : driver.alice {
+                  assigned_truck: null
+                  profit_log: log.driver
+                }
+
+                profit_log : log.driver {
+                  stats_data: 2
+                  stats_data[0]: entry.old
+                  stats_data[1]: entry.new
+                }
+
+                profit_log_entry : entry.old {
+                  revenue: 1200
+                  wage: 200
+                  maintenance: 50
+                  fuel: 25
+                  distance: 300
+                  cargo: cargo.apples
+                  source_city: phoenix
+                  destination_city: tucson
+                  timestamp_day: 177
+                }
+
+                profit_log_entry : entry.new {
+                  revenue: 2400
+                  wage: 300
+                  maintenance: 75
+                  fuel: 25
+                  distance: 450
+                  cargo: cargo.medicine
+                  source_city: tucson
+                  destination_city: denver
+                  timestamp_day: 178
+                }
+
+                vehicle : truck.alice {
+                  license_plate: "ATS-100|arizona"
+                }
+                }
+                """));
+
+        var company = Assert.Single(StatisticsProjection.Build([snapshot]).Companies);
+
+        var driver = Assert.Single(company.Drivers);
+        Assert.Equal("truck.alice", driver.TruckId);
+
+        Assert.Collection(
+            company.RecentDriverJobs,
+            job =>
+            {
+                Assert.Equal("entry.new", job.Id);
+                Assert.Equal("driver.alice", job.DriverId);
+                Assert.Equal("cargo.medicine", job.Cargo);
+                Assert.Equal("tucson", job.SourceCity);
+                Assert.Equal("denver", job.TargetCity);
+                Assert.Equal(2400, job.Revenue);
+                Assert.Equal(400, job.Expenses);
+                Assert.Equal(2000, job.Profit);
+                Assert.Equal(450, job.Distance);
+                Assert.Equal(178, job.TimestampDay);
+            },
+            job =>
+            {
+                Assert.Equal("entry.old", job.Id);
+                Assert.Equal(925, job.Profit);
+                Assert.Equal(177, job.TimestampDay);
+            });
+    }
+
+    [Fact]
+    public void Build_derives_truck_model_and_clean_license_plate_from_vehicle_accessories()
+    {
+        var snapshot = new SaveSnapshot(
+            "truck-display",
+            new DateTimeOffset(2026, 5, 26, 10, 30, 0, TimeSpan.Zero),
+            SiiSaveParser.Parse("""
+                SiiNunit
+                {
+                garage : garage.billings {
+                  city: billings
+                  drivers: 1
+                  drivers[0]: driver.alice
+                  vehicles: 1
+                  vehicles[0]: truck.alice
+                }
+
+                driver_ai : driver.alice {
+                  assigned_truck: nil
+                }
+
+                vehicle : truck.alice {
+                  license_plate: "<color value=FF000000> PA76356|montana"
+                  accessories: 1
+                  accessories[0]: accessory.base
+                }
+
+                vehicle_accessory : accessory.base {
+                  data_path: "/def/vehicle/truck/kenworth.t680/data.sii"
+                }
+                }
+                """));
+
+        var truck = Assert.Single(Assert.Single(StatisticsProjection.Build([snapshot]).Companies).Trucks);
+
+        Assert.Equal("Kenworth T680 - PA76356 Montana", truck.DisplayName);
+        Assert.Equal("PA76356 Montana", truck.LicensePlate);
+        Assert.Equal("Kenworth T680", truck.ModelName);
+        Assert.Equal("/def/vehicle/truck/kenworth.t680/data.sii", truck.DefinitionPath);
+    }
+
+    [Fact]
+    public void Build_formats_truck_model_tokens_with_years_and_suffixes()
+    {
+        var snapshot = new SaveSnapshot(
+            "truck-display-year",
+            new DateTimeOffset(2026, 5, 26, 10, 30, 0, TimeSpan.Zero),
+            SiiSaveParser.Parse("""
+                SiiNunit
+                {
+                garage : garage.billings {
+                  city: billings
+                  vehicles: 2
+                  vehicles[0]: truck.freightliner
+                  vehicles[1]: truck.westernstar
+                }
+
+                vehicle : truck.freightliner {
+                  accessories: 1
+                  accessories[0]: accessory.freightliner
+                }
+
+                vehicle_accessory : accessory.freightliner {
+                  data_path: "/def/vehicle/truck/freightliner.cascadia2019/data.sii"
+                }
+
+                vehicle : truck.westernstar {
+                  accessories: 1
+                  accessories[0]: accessory.westernstar
+                }
+
+                vehicle_accessory : accessory.westernstar {
+                  data_path: "/def/vehicle/truck/westernstar.49x/data.sii"
+                }
+                }
+                """));
+
+        var trucks = Assert.Single(StatisticsProjection.Build([snapshot]).Companies).Trucks;
+
+        Assert.Contains(trucks, truck => truck.ModelName == "Freightliner Cascadia 2019");
+        Assert.Contains(trucks, truck => truck.ModelName == "Western Star 49X");
+    }
+
+    [Fact]
     public void Build_excludes_unowned_garages_with_zero_status()
     {
         var snapshot = new SaveSnapshot(

@@ -226,6 +226,67 @@ public sealed class SqliteMedallionSaveSnapshotSourceTests : IDisposable
     }
 
     [Fact]
+    public async Task StatisticsService_persists_enriched_truck_metadata_and_recent_driver_jobs()
+    {
+        await WriteEnrichedAnalyticSaveAsync();
+        var source = new SqliteMedallionSaveSnapshotSource(_root, _dbPath);
+        var service = new StatisticsService(source);
+
+        var statistics = await service.LoadAsync(CancellationToken.None);
+
+        var company = Assert.Single(statistics.Companies);
+        var truck = Assert.Single(company.Trucks);
+        Assert.Equal("Kenworth T680 - PA76356 Montana", truck.DisplayName);
+        Assert.Equal("PA76356 Montana", truck.LicensePlate);
+        Assert.Equal("Kenworth T680", truck.ModelName);
+
+        Assert.Collection(
+            company.RecentDriverJobs,
+            job =>
+            {
+                Assert.Equal("entry.new", job.Id);
+                Assert.Equal("driver.alice", job.DriverId);
+                Assert.Equal(178, job.TimestampDay);
+            },
+            job =>
+            {
+                Assert.Equal("entry.old", job.Id);
+                Assert.Equal(177, job.TimestampDay);
+            });
+
+        using var connection = OpenTestConnection();
+        await connection.OpenAsync();
+
+        Assert.Equal(
+            ("Kenworth T680 - PA76356 Montana", "PA76356 Montana", "Kenworth T680", "/def/vehicle/truck/kenworth.t680/data.sii"),
+            await QuerySingleAsync<(string, string, string, string)>(
+                connection,
+                "select display_name, license_plate, model_name, definition_path from silver_trucks where truck_id = 'truck.alice'",
+                reader => (reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetString(3))));
+
+        Assert.Equal(
+            ("entry.new", "driver.alice", 2000L, 178),
+            await QuerySingleAsync<(string, string, long, int)>(
+                connection,
+                """
+                select job_id, driver_id, profit, timestamp_day
+                from gold_driver_recent_jobs
+                where driver_id = 'driver.alice'
+                order by timestamp_day desc
+                limit 1
+                """,
+                reader => (reader.GetString(0), reader.GetString(1), reader.GetInt64(2), reader.GetInt32(3))));
+
+        using var nullCommand = connection.CreateCommand();
+        nullCommand.CommandText = """
+            select count(*)
+            from silver_drivers
+            where truck_id = 'null'
+            """;
+        Assert.Equal(0L, (long)(await nullCommand.ExecuteScalarAsync() ?? 0L));
+    }
+
+    [Fact]
     public async Task StatisticsService_persists_inferred_deadhead_count_when_driver_returns_to_home_without_paid_job_from_destination()
     {
         await WriteDeadheadRouteHistoryAsync();
@@ -375,6 +436,75 @@ public sealed class SqliteMedallionSaveSnapshotSourceTests : IDisposable
 
             trailer : trailer.reefer.1 {
               trailer_definition: trailer_def.scs.box.reefer
+            }
+            }
+            """);
+        File.SetLastWriteTimeUtc(savePath, DateTime.UtcNow);
+    }
+
+    private async Task WriteEnrichedAnalyticSaveAsync()
+    {
+        var saveDirectory = Path.Combine(_root, "profiles", "506C61796572", "save", "autosave");
+        Directory.CreateDirectory(saveDirectory);
+        var savePath = Path.Combine(saveDirectory, "game.sii");
+        await File.WriteAllTextAsync(savePath, """
+            SiiNunit
+            {
+            player : player {
+              company_name: "Desert Line"
+            }
+
+            garage : garage.phoenix {
+              city: phoenix
+              drivers: 1
+              drivers[0]: driver.alice
+              vehicles: 1
+              vehicles[0]: truck.alice
+            }
+
+            driver_ai : driver.alice {
+              assigned_truck: null
+              profit_log: log.driver
+            }
+
+            profit_log : log.driver {
+              stats_data: 2
+              stats_data[0]: entry.old
+              stats_data[1]: entry.new
+            }
+
+            profit_log_entry : entry.old {
+              revenue: 1200
+              wage: 200
+              maintenance: 50
+              fuel: 25
+              distance: 300
+              cargo: cargo.apples
+              source_city: phoenix
+              destination_city: tucson
+              timestamp_day: 177
+            }
+
+            profit_log_entry : entry.new {
+              revenue: 2400
+              wage: 300
+              maintenance: 75
+              fuel: 25
+              distance: 450
+              cargo: cargo.medicine
+              source_city: tucson
+              destination_city: denver
+              timestamp_day: 178
+            }
+
+            vehicle : truck.alice {
+              license_plate: "<color value=FF000000> PA76356|montana"
+              accessories: 1
+              accessories[0]: accessory.base
+            }
+
+            vehicle_accessory : accessory.base {
+              data_path: "/def/vehicle/truck/kenworth.t680/data.sii"
             }
             }
             """);

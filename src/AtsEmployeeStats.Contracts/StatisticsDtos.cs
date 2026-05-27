@@ -12,7 +12,8 @@ public sealed record CompanyDto(
     IReadOnlyList<DriverDto> Drivers,
     IReadOnlyList<TruckDto> Trucks,
     IReadOnlyList<MissionDto> Missions,
-    IReadOnlyList<TrailerTypeDto> TrailerTypes);
+    IReadOnlyList<TrailerTypeDto> TrailerTypes,
+    IReadOnlyList<DriverRecentJobDto>? RecentDriverJobs = null);
 
 public sealed record GarageDto(
     string Id,
@@ -36,7 +37,10 @@ public sealed record TruckDto(
     string DisplayName,
     long Profit,
     string? GarageId,
-    string? DriverId);
+    string? DriverId,
+    string? LicensePlate = null,
+    string? ModelName = null,
+    string? DefinitionPath = null);
 
 public sealed record MissionDto(
     string Id,
@@ -46,7 +50,21 @@ public sealed record MissionDto(
     string? Cargo,
     string? SourceCity,
     string? TargetCity,
-    long Profit);
+    long Profit,
+    int? TimestampDay = null);
+
+public sealed record DriverRecentJobDto(
+    string Id,
+    string DriverId,
+    string? TruckId,
+    string? Cargo,
+    string? SourceCity,
+    string? TargetCity,
+    long Revenue,
+    long Expenses,
+    long Profit,
+    int? Distance,
+    int? TimestampDay);
 
 public sealed record TrailerTypeDto(
     string Id,

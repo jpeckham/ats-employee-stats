@@ -93,6 +93,15 @@ public sealed class ScsReferenceDataIngestionTests : IDisposable
 
         var driver = Assert.Single(Assert.Single(statistics.Companies).Drivers);
         Assert.Equal("Alice Ramirez", driver.DisplayName);
+
+        await using var connection = OpenTestConnection();
+        await connection.OpenAsync();
+        Assert.Equal(
+            "Alice Ramirez",
+            await QuerySingleAsync(
+                connection,
+                "select display_name from gold_garage_drivers where driver_id = 'driver.23'",
+                reader => reader.GetString(0)));
     }
 
     [Fact]

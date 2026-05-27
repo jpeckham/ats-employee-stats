@@ -22,14 +22,36 @@ public sealed class StatisticsDashboardMapperTests
                         new DriverStatistic("driver.alice", "Alice Ramirez", 3000, "garage.phoenix", "truck.alice")
                     ],
                     [
-                        new TruckStatistic("truck.alice", "ATS-100", 725, "garage.phoenix", "driver.alice")
+                        new TruckStatistic(
+                            "truck.alice",
+                            "Kenworth T680 - ATS-100 Arizona",
+                            725,
+                            "garage.phoenix",
+                            "driver.alice",
+                            "ATS-100 Arizona",
+                            "Kenworth T680",
+                            "/def/vehicle/truck/kenworth.t680/data.sii")
                     ],
                     [
-                        new MissionStatistic("job.1", "driver.alice", "truck.alice", "trailer.1", "reefer", "medicine", "phoenix", "denver", 3000),
+                        new MissionStatistic("job.1", "driver.alice", "truck.alice", "trailer.1", "reefer", "medicine", "phoenix", "denver", 3000, 181),
                         new MissionStatistic("job.2", "driver.alice", "truck.alice", "trailer.2", "flatbed", "steel", "denver", "phoenix", 1500)
                     ],
                     [
                         new TrailerTypeStatistic("reefer", 3000, 1)
+                    ],
+                    [
+                        new DriverRecentJobStatistic(
+                            "recent.1",
+                            "driver.alice",
+                            "truck.alice",
+                            "medicine",
+                            "phoenix",
+                            "denver",
+                            3200,
+                            200,
+                            3000,
+                            800,
+                            181)
                     ])
             ]);
 
@@ -42,7 +64,16 @@ public sealed class StatisticsDashboardMapperTests
         var driver = Assert.Single(company.Drivers);
         Assert.Equal(429, driver.ProfitPerDay);
         Assert.Equal(2, driver.JobCount);
-        Assert.Equal("ATS-100", Assert.Single(company.Trucks).DisplayName);
-        Assert.Contains(company.Missions, mission => mission.Cargo == "medicine");
+        var truck = Assert.Single(company.Trucks);
+        Assert.Equal("Kenworth T680 - ATS-100 Arizona", truck.DisplayName);
+        Assert.Equal("ATS-100 Arizona", truck.LicensePlate);
+        Assert.Equal("Kenworth T680", truck.ModelName);
+        Assert.Equal("/def/vehicle/truck/kenworth.t680/data.sii", truck.DefinitionPath);
+        Assert.Contains(company.Missions, mission => mission.Cargo == "medicine" && mission.TimestampDay == 181);
+        Assert.NotNull(company.RecentDriverJobs);
+        var recentJob = Assert.Single(company.RecentDriverJobs);
+        Assert.Equal("driver.alice", recentJob.DriverId);
+        Assert.Equal("truck.alice", recentJob.TruckId);
+        Assert.Equal(800, recentJob.Distance);
     }
 }

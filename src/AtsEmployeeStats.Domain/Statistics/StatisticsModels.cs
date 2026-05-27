@@ -4,15 +4,53 @@ public sealed record AtsStatistics(
     DateTimeOffset? LastUpdated,
     IReadOnlyList<CompanyStatistics> Companies);
 
-public sealed record CompanyStatistics(
-    string Id,
-    string DisplayName,
-    DateTimeOffset LastUpdated,
-    IReadOnlyList<GarageStatistic> Garages,
-    IReadOnlyList<DriverStatistic> Drivers,
-    IReadOnlyList<TruckStatistic> Trucks,
-    IReadOnlyList<MissionStatistic> Missions,
-    IReadOnlyList<TrailerTypeStatistic> TrailerTypes);
+public sealed record CompanyStatistics
+{
+    public CompanyStatistics(
+        string id,
+        string displayName,
+        DateTimeOffset lastUpdated,
+        IReadOnlyList<GarageStatistic> garages,
+        IReadOnlyList<DriverStatistic> drivers,
+        IReadOnlyList<TruckStatistic> trucks,
+        IReadOnlyList<MissionStatistic> missions,
+        IReadOnlyList<TrailerTypeStatistic> trailerTypes)
+        : this(id, displayName, lastUpdated, garages, drivers, trucks, missions, trailerTypes, [])
+    {
+    }
+
+    public CompanyStatistics(
+        string id,
+        string displayName,
+        DateTimeOffset lastUpdated,
+        IReadOnlyList<GarageStatistic> garages,
+        IReadOnlyList<DriverStatistic> drivers,
+        IReadOnlyList<TruckStatistic> trucks,
+        IReadOnlyList<MissionStatistic> missions,
+        IReadOnlyList<TrailerTypeStatistic> trailerTypes,
+        IReadOnlyList<DriverRecentJobStatistic> recentDriverJobs)
+    {
+        Id = id;
+        DisplayName = displayName;
+        LastUpdated = lastUpdated;
+        Garages = garages;
+        Drivers = drivers;
+        Trucks = trucks;
+        Missions = missions;
+        TrailerTypes = trailerTypes;
+        RecentDriverJobs = recentDriverJobs;
+    }
+
+    public string Id { get; init; }
+    public string DisplayName { get; init; }
+    public DateTimeOffset LastUpdated { get; init; }
+    public IReadOnlyList<GarageStatistic> Garages { get; init; }
+    public IReadOnlyList<DriverStatistic> Drivers { get; init; }
+    public IReadOnlyList<TruckStatistic> Trucks { get; init; }
+    public IReadOnlyList<MissionStatistic> Missions { get; init; }
+    public IReadOnlyList<TrailerTypeStatistic> TrailerTypes { get; init; }
+    public IReadOnlyList<DriverRecentJobStatistic> RecentDriverJobs { get; init; }
+}
 
 public sealed record GarageStatistic(
     string Id,
@@ -33,7 +71,10 @@ public sealed record TruckStatistic(
     string DisplayName,
     long Profit,
     string? GarageId,
-    string? DriverId);
+    string? DriverId,
+    string? LicensePlate = null,
+    string? ModelName = null,
+    string? DefinitionPath = null);
 
 public sealed record MissionStatistic(
     string Id,
@@ -44,7 +85,21 @@ public sealed record MissionStatistic(
     string? Cargo,
     string? SourceCity,
     string? TargetCity,
-    long Profit);
+    long Profit,
+    int? TimestampDay = null);
+
+public sealed record DriverRecentJobStatistic(
+    string Id,
+    string DriverId,
+    string? TruckId,
+    string? Cargo,
+    string? SourceCity,
+    string? TargetCity,
+    long Revenue,
+    long Expenses,
+    long Profit,
+    int? Distance,
+    int? TimestampDay);
 
 public sealed record TrailerTypeStatistic(
     string Id,
