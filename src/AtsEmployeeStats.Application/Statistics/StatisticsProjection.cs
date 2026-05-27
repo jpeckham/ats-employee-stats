@@ -31,6 +31,12 @@ public static partial class StatisticsProjection
         var latest = snapshots.OrderByDescending(snapshot => snapshot.LastWritten).First();
         var units = latest.Document.Units;
         var unitsById = units.ToDictionary(unit => unit.Id, StringComparer.OrdinalIgnoreCase);
+        var garageEligibleCityIds = units
+            .Where(unit => unit.TypeEquals("garage"))
+            .Select(garage => NormalizeCityId(FirstKnownValue(garage, "city", "name")))
+            .Where(city => !string.IsNullOrWhiteSpace(city))
+            .Select(city => city!)
+            .ToList();
         var garages = units
             .Where(unit => unit.TypeEquals("garage"))
             .Where(IsOwnedGarage)
@@ -119,8 +125,12 @@ public static partial class StatisticsProjection
             .ToList();
 
         var companyName = GetCompanyDisplayName(latest);
+        var companyId = NormalizeCompanyId(companyName);
+        var routeStats = BuildRouteStats(missionStats);
+        var cityStats = BuildCityStats(missionStats, garageStats, routeStats, garageEligibleCityIds);
+        var individualTrailerStats = BuildTrailerStats(trailers, missionStats, trailerTypesByTrailer);
         return new CompanyStatistics(
-            NormalizeCompanyId(companyName),
+            companyId,
             companyName,
             latest.LastWritten,
             garageStats,
@@ -128,7 +138,11 @@ public static partial class StatisticsProjection
             truckStats,
             missionStats,
             trailerStats,
-            BuildDriverRecentJobs(drivers, unitsById, driverToTruck));
+            BuildDriverRecentJobs(drivers, unitsById, driverToTruck),
+            individualTrailerStats,
+            cityStats,
+            routeStats,
+            BuildProfitTrends(companyId, missionStats, driverToGarage));
     }
 
     private static bool IsOwnedGarage(SiiUnit garage)
@@ -265,7 +279,8 @@ public static partial class StatisticsProjection
             cargo,
             sourceCity,
             targetCity,
-            profit);
+            profit,
+            FirstIntValue(job, "timestamp_day"));
     }
 
     private static MissionStatistic BuildDeliveryLogMission(SiiUnit entry)
@@ -293,8 +308,205 @@ public static partial class StatisticsProjection
             Cargo: cargo,
             SourceCity: sourceCity,
             TargetCity: targetCity,
-            Profit: profit);
+            Profit: profit,
+            TimestampDay: FirstIntValue(entry, "timestamp_day"));
     }
+
+    private static IReadOnlyList<TrailerStatistic> BuildTrailerStats(
+        IReadOnlyCollection<SiiUnit> trailers,
+        IReadOnlyCollection<MissionStatistic> missions,
+        IReadOnlyDictionary<string, string> trailerTypesByTrailer)
+    {
+        var missionStatsByTrailer = missions
+            .Where(mission => !string.IsNullOrWhiteSpace(mission.TrailerId))
+            .GroupBy(mission => mission.TrailerId!, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                group => group.Key,
+                group => (Profit: group.Sum(mission => mission.Profit), JobCount: group.Count()),
+                StringComparer.OrdinalIgnoreCase);
+
+        return trailers
+            .Select(trailer =>
+            {
+                var trailerType = FirstKnownValue(trailer, "trailer_definition", "trailer_def", "definition") ??
+                    trailerTypesByTrailer.GetValueOrDefault(trailer.Id) ??
+                    "unknown";
+                missionStatsByTrailer.TryGetValue(trailer.Id, out var usage);
+
+                return new TrailerStatistic(
+                    trailer.Id,
+                    trailerType,
+                    usage.Profit,
+                    usage.JobCount);
+            })
+            .Where(trailer => trailer.JobCount > 0 || !StringComparer.OrdinalIgnoreCase.Equals(trailer.TrailerType, "unknown"))
+            .OrderByDescending(trailer => trailer.Profit)
+            .ThenBy(trailer => trailer.Id, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    private static IReadOnlyList<RouteStatistic> BuildRouteStats(IReadOnlyCollection<MissionStatistic> missions)
+    {
+        var directedRoutes = missions
+            .Where(HasRoute)
+            .GroupBy(mission => (Origin: mission.SourceCity!, Destination: mission.TargetCity!), new RouteKeyComparer())
+            .ToDictionary(
+                group => group.Key,
+                group => (Profit: group.Sum(mission => mission.Profit), JobCount: group.Count()),
+                new RouteKeyComparer());
+
+        return directedRoutes
+            .Select(route =>
+            {
+                directedRoutes.TryGetValue((route.Key.Destination, route.Key.Origin), out var reverse);
+                return new RouteStatistic(
+                    route.Key.Origin,
+                    route.Key.Destination,
+                    route.Value.Profit,
+                    route.Value.JobCount,
+                    ProfitPerMile: 0,
+                    ReturnCoverageRatio: reverse.JobCount == 0 ? 0 : Math.Min(route.Value.JobCount, reverse.JobCount) / (decimal)Math.Max(route.Value.JobCount, reverse.JobCount));
+            })
+            .OrderBy(route => route.OriginCityId, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(route => route.DestinationCityId, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    private static IReadOnlyList<CityStatistic> BuildCityStats(
+        IReadOnlyCollection<MissionStatistic> missions,
+        IReadOnlyCollection<GarageStatistic> garages,
+        IReadOnlyCollection<RouteStatistic> routes,
+        IReadOnlyCollection<string> garageEligibleCityIds)
+    {
+        var ownedGarageCities = garages
+            .Select(garage => NormalizeCityId(garage.DisplayName))
+            .Where(city => !string.IsNullOrWhiteSpace(city))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var eligibleGarageCities = garageEligibleCityIds
+            .Concat(ownedGarageCities)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        var missionCities = missions
+            .Where(HasRoute)
+            .SelectMany(mission => new[] { mission.SourceCity!, mission.TargetCity! })
+            .Select(NormalizeCityId)
+            .Where(city => !string.IsNullOrWhiteSpace(city))
+            .Select(city => city!)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        return missionCities
+            .Select(city =>
+            {
+                var outbound = missions
+                    .Where(mission => StringComparer.OrdinalIgnoreCase.Equals(NormalizeCityId(mission.SourceCity), city))
+                    .ToList();
+                var inbound = missions
+                    .Where(mission => StringComparer.OrdinalIgnoreCase.Equals(NormalizeCityId(mission.TargetCity), city))
+                    .ToList();
+                var bidirectionalProfit = routes
+                    .Where(route =>
+                        (StringComparer.OrdinalIgnoreCase.Equals(route.OriginCityId, city) ||
+                            StringComparer.OrdinalIgnoreCase.Equals(route.DestinationCityId, city)) &&
+                        routes.Any(reverse =>
+                            StringComparer.OrdinalIgnoreCase.Equals(reverse.OriginCityId, route.DestinationCityId) &&
+                            StringComparer.OrdinalIgnoreCase.Equals(reverse.DestinationCityId, route.OriginCityId)))
+                    .Sum(route => route.Profit);
+                var hasOwnedGarage = ownedGarageCities.Contains(city);
+                var isGarageEligible = eligibleGarageCities.Contains(city);
+                var expansionScore = hasOwnedGarage
+                    ? 0m
+                    : Math.Round(outbound.Count + inbound.Count + (outbound.Sum(mission => mission.Profit) / 10000m), 2, MidpointRounding.AwayFromZero);
+
+                return new CityStatistic(
+                    city,
+                    FormatRouteEndpoint(city),
+                    hasOwnedGarage,
+                    isGarageEligible,
+                    outbound.Count + inbound.Count,
+                    outbound.Sum(mission => mission.Profit),
+                    inbound.Sum(mission => mission.Profit),
+                    bidirectionalProfit,
+                    expansionScore);
+            })
+            .OrderByDescending(city => city.HasOwnedGarage)
+            .ThenBy(city => city.Id, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    private static IReadOnlyList<TrendPointStatistic> BuildProfitTrends(
+        string companyId,
+        IReadOnlyCollection<MissionStatistic> missions,
+        IReadOnlyDictionary<string, string> driverToGarage)
+    {
+        var trends = new List<TrendPointStatistic>();
+        var timedMissions = missions
+            .Where(mission => mission.TimestampDay is not null)
+            .ToList();
+
+        trends.AddRange(BuildTrend("company", companyId, timedMissions));
+        trends.AddRange(timedMissions
+            .Where(mission => !string.IsNullOrWhiteSpace(mission.DriverId))
+            .GroupBy(mission => mission.DriverId!, StringComparer.OrdinalIgnoreCase)
+            .SelectMany(group => BuildTrend("driver", group.Key, group)));
+        trends.AddRange(timedMissions
+            .Where(mission => !string.IsNullOrWhiteSpace(mission.TruckId))
+            .GroupBy(mission => mission.TruckId!, StringComparer.OrdinalIgnoreCase)
+            .SelectMany(group => BuildTrend("truck", group.Key, group)));
+        trends.AddRange(timedMissions
+            .Where(mission => !string.IsNullOrWhiteSpace(mission.TrailerId))
+            .GroupBy(mission => mission.TrailerId!, StringComparer.OrdinalIgnoreCase)
+            .SelectMany(group => BuildTrend("trailer", group.Key, group)));
+        trends.AddRange(timedMissions
+            .Where(mission => !string.IsNullOrWhiteSpace(mission.DriverId) && driverToGarage.ContainsKey(mission.DriverId!))
+            .GroupBy(mission => driverToGarage[mission.DriverId!], StringComparer.OrdinalIgnoreCase)
+            .SelectMany(group => BuildTrend("garage", group.Key, group)));
+        trends.AddRange(timedMissions
+            .Where(HasRoute)
+            .SelectMany(mission => new[]
+            {
+                (CityId: NormalizeCityId(mission.SourceCity)!, Mission: mission),
+                (CityId: NormalizeCityId(mission.TargetCity)!, Mission: mission)
+            })
+            .GroupBy(pair => pair.CityId, StringComparer.OrdinalIgnoreCase)
+            .SelectMany(group => BuildTrend("city", group.Key, group.Select(pair => pair.Mission))));
+
+        return trends
+            .OrderBy(trend => trend.EntityKind, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(trend => trend.EntityId, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(trend => trend.GameDay)
+            .ToList();
+    }
+
+    private static IEnumerable<TrendPointStatistic> BuildTrend(
+        string entityKind,
+        string entityId,
+        IEnumerable<MissionStatistic> missions) =>
+        missions
+            .Where(mission => mission.TimestampDay is not null)
+            .GroupBy(mission => mission.TimestampDay!.Value)
+            .OrderBy(group => group.Key)
+            .Select(group => new TrendPointStatistic(
+                entityKind,
+                entityId,
+                group.Key,
+                group.Sum(mission => mission.Profit),
+                group.Count()));
+
+    private static bool HasRoute(MissionStatistic mission) =>
+        !string.IsNullOrWhiteSpace(mission.SourceCity) &&
+        !string.IsNullOrWhiteSpace(mission.TargetCity);
+
+    private static string? NormalizeCityId(string? value)
+    {
+        value = CleanSiiValue(value);
+        return value is null ? null : value.Trim().ToLowerInvariant();
+    }
+
+    private static string FormatRouteEndpoint(string value) =>
+        string.Join(' ', value
+            .Split(['_', '-', ' '], StringSplitOptions.RemoveEmptyEntries)
+            .Select(part => char.ToUpperInvariant(part[0]) + part[1..].ToLowerInvariant()));
 
     private static string BuildMissionDeduplicationKey(SiiUnit source, MissionStatistic mission)
     {
@@ -702,6 +914,18 @@ public static partial class StatisticsProjection
 }
 
 internal sealed record HistoricalMission(MissionStatistic Statistic, string DeduplicationKey, DateTimeOffset LastWritten);
+
+internal sealed class RouteKeyComparer : IEqualityComparer<(string Origin, string Destination)>
+{
+    public bool Equals((string Origin, string Destination) left, (string Origin, string Destination) right) =>
+        StringComparer.OrdinalIgnoreCase.Equals(left.Origin, right.Origin) &&
+        StringComparer.OrdinalIgnoreCase.Equals(left.Destination, right.Destination);
+
+    public int GetHashCode((string Origin, string Destination) value) =>
+        HashCode.Combine(
+            StringComparer.OrdinalIgnoreCase.GetHashCode(value.Origin),
+            StringComparer.OrdinalIgnoreCase.GetHashCode(value.Destination));
+}
 
 internal static class SiiUnitExtensions
 {

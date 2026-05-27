@@ -1,0 +1,117 @@
+@page "/companies/{CompanyId}/trailers/{TrailerId}"
+@inherits AtsEmployeeStats.Web.Pages.DashboardBase
+
+<main class="dashboard-shell">
+    <section class="topbar">
+        <div>
+            <h1>@(SelectedTrailer?.Id ?? "Trailer")</h1>
+            <p>@Status</p>
+        </div>
+        <div class="range-toggle" role="group" aria-label="Time range">
+            <button class="@RangeClass(14)" @onclick="() => SetRangeAsync(14)">14 days</button>
+            <button class="@RangeClass(7)" @onclick="() => SetRangeAsync(7)">7 days</button>
+        </div>
+    </section>
+
+    <nav class="breadcrumb" aria-label="Current location">
+        <NavLink href="/">Companies</NavLink>
+        @if (SelectedCompany is not null)
+        {
+            <NavLink href="@($"/companies/{Segment(SelectedCompany.Id)}")">@SelectedCompany.DisplayName</NavLink>
+        }
+        @if (SelectedTrailer is not null)
+        {
+            <span>@SelectedTrailer.Id</span>
+        }
+    </nav>
+
+    @if (Statistics is null)
+    {
+        <div class="empty-state">Loading trailer...</div>
+    }
+    else if (SelectedCompany is null)
+    {
+        <div class="empty-state"><p>Company not found.</p><NavLink class="button-link" href="/">Back to companies</NavLink></div>
+    }
+    else if (SelectedTrailer is null)
+    {
+        <div class="empty-state"><p>Trailer not found.</p><NavLink class="button-link" href="@($"/companies/{Segment(SelectedCompany.Id)}")">Back to company</NavLink></div>
+    }
+    else
+    {
+        <section class="detail-summary">
+            <div><span>Type</span><strong>@SelectedTrailer.TrailerType</strong></div>
+            <div><span>Profit</span><strong>@Money(SelectedTrailer.Profit)</strong></div>
+            <div><span>Jobs</span><strong>@SelectedTrailer.JobCount</strong></div>
+            <div><span>Trucks</span><strong>@DashboardViewModel.GetTrailerTrucks(SelectedCompany, SelectedTrailer.Id).Count</strong></div>
+        </section>
+
+        <nav class="tabs" aria-label="Trailer detail sections">
+            <button class="@TabClass("details")" @onclick="@(() => _activeTab = "details")">Details</button>
+            <button class="@TabClass("trucks")" @onclick="@(() => _activeTab = "trucks")">Trucks</button>
+            <button class="@TabClass("jobs")" @onclick="@(() => _activeTab = "jobs")">Jobs</button>
+            <button class="@TabClass("routes")" @onclick="@(() => _activeTab = "routes")">Route Analytics</button>
+        </nav>
+
+        <section class="content-stack">
+            @if (_activeTab == "trucks")
+            {
+                <table>
+                    <caption>Trucks</caption>
+                    <thead><tr><th>Truck</th><th>Profit</th><th></th></tr></thead>
+                    <tbody>
+                        @foreach (var truck in DashboardViewModel.GetTrailerTrucks(SelectedCompany, SelectedTrailer.Id))
+                        {
+                            <tr>
+                                <td>@truck.DisplayName</td>
+                                <td>@Money(truck.Profit)</td>
+                                <td class="action-cell"><NavLink class="button-link" href="@($"/companies/{Segment(SelectedCompany.Id)}/trucks/{Segment(truck.Id)}")">View</NavLink></td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+            else if (_activeTab == "jobs" || _activeTab == "routes")
+            {
+                <table>
+                    <caption>@(_activeTab == "routes" ? "Route Analytics" : "Jobs")</caption>
+                    <thead><tr><th>Route</th><th>Cargo</th><th>Truck</th><th>Profit</th><th></th></tr></thead>
+                    <tbody>
+                        @foreach (var job in DashboardViewModel.GetTrailerJobs(SelectedCompany, SelectedTrailer.Id))
+                        {
+                            <tr>
+                                <td>@(job.SourceCity ?? "?") -&gt; @(job.TargetCity ?? "?")</td>
+                                <td>@(job.Cargo ?? "-")</td>
+                                <td>@DashboardViewModel.GetTruckDisplayName(SelectedCompany, job.TruckId)</td>
+                                <td>@Money(job.Profit)</td>
+                                <td class="action-cell"><NavLink class="button-link" href="@($"/companies/{Segment(SelectedCompany.Id)}/jobs/{Segment(job.Id)}")">View</NavLink></td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+            else
+            {
+                <table>
+                    <caption>Details</caption>
+                    <thead><tr><th>Field</th><th>Value</th></tr></thead>
+                    <tbody>
+                        <tr><td>Trailer id</td><td>@SelectedTrailer.Id</td></tr>
+                        <tr><td>Type</td><td>@SelectedTrailer.TrailerType</td></tr>
+                    </tbody>
+                </table>
+            }
+        </section>
+    }
+</main>
+
+@code {
+    [Parameter] public string CompanyId { get; set; } = string.Empty;
+    [Parameter] public string TrailerId { get; set; } = string.Empty;
+
+    private string _activeTab = "details";
+
+    private CompanyDto? SelectedCompany => DashboardViewModel.FindCompany(Statistics, CompanyId);
+    private TrailerDto? SelectedTrailer => SelectedCompany is null ? null : DashboardViewModel.FindTrailer(SelectedCompany, TrailerId);
+    private string TabClass(string tab) => _activeTab == tab ? "active" : string.Empty;
+}

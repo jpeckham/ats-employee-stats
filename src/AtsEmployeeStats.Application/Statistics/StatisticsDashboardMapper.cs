@@ -51,7 +51,8 @@ public static class StatisticsDashboardMapper
                 mission.SourceCity,
                 mission.TargetCity,
                 mission.Profit,
-                mission.TimestampDay)).ToList(),
+                mission.TimestampDay,
+                mission.TrailerId)).ToList(),
             company.TrailerTypes.Select(trailerType => new TrailerTypeDto(
                 trailerType.Id,
                 trailerType.Profit,
@@ -67,8 +68,58 @@ public static class StatisticsDashboardMapper
                 job.Expenses,
                 job.Profit,
                 job.Distance,
-                job.TimestampDay)).ToList());
+                job.TimestampDay)).ToList(),
+            company.Trailers.Select(trailer => new TrailerDto(
+                trailer.Id,
+                trailer.TrailerType,
+                trailer.Profit,
+                trailer.JobCount)).ToList(),
+            company.Cities.Select(city => new CityDto(
+                city.Id,
+                city.DisplayName,
+                city.HasOwnedGarage,
+                city.IsGarageEligible,
+                city.VisitCount,
+                city.OutboundProfit,
+                city.InboundProfit,
+                city.BidirectionalProfit,
+                city.ExpansionScore)).ToList(),
+            company.Routes.Select(route => new RouteDto(
+                route.OriginCityId,
+                route.DestinationCityId,
+                route.Profit,
+                route.JobCount,
+                route.ProfitPerMile,
+                route.ReturnCoverageRatio)).ToList(),
+            ToSparkline(company.ProfitTrends, "company", company.Id, rangeDays));
 
     private static long MoneyPerDay(long value, int rangeDays) =>
         (long)Math.Round(value / (decimal)rangeDays, MidpointRounding.AwayFromZero);
+
+    private static SparklineDto ToSparkline(
+        IReadOnlyCollection<TrendPointStatistic> trends,
+        string entityKind,
+        string entityId,
+        int rangeDays)
+    {
+        var matching = trends
+            .Where(trend =>
+                StringComparer.OrdinalIgnoreCase.Equals(trend.EntityKind, entityKind) &&
+                StringComparer.OrdinalIgnoreCase.Equals(trend.EntityId, entityId))
+            .OrderBy(trend => trend.GameDay)
+            .ToList();
+        var maxGameDay = matching.Count == 0 ? 0 : matching.Max(trend => trend.GameDay);
+        var minGameDay = maxGameDay == 0 ? 0 : maxGameDay - rangeDays + 1;
+
+        return new SparklineDto(
+            rangeDays,
+            matching
+                .Where(trend => maxGameDay == 0 || trend.GameDay >= minGameDay)
+                .Select(trend => new EntityTrendPointDto(
+                    trend.GameDay,
+                    SaveTimeUtc: null,
+                    trend.Profit,
+                    trend.SampleCount))
+                .ToList());
+    }
 }

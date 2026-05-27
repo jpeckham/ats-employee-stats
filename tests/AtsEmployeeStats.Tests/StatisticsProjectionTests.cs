@@ -218,6 +218,104 @@ public sealed class StatisticsProjectionTests
     }
 
     [Fact]
+    public void Build_tracks_historical_driver_truck_and_garage_assignments_across_snapshots()
+    {
+        var older = new SaveSnapshot(
+            "save-1",
+            new DateTimeOffset(2026, 5, 25, 20, 0, 0, TimeSpan.Zero),
+            SiiSaveParser.Parse("""
+                SiiNunit
+                {
+                player : player {
+                  company_name: "Desert Line"
+                }
+
+                garage : garage.phoenix {
+                  city: phoenix
+                  drivers: 1
+                  drivers[0]: driver.alice
+                  vehicles: 1
+                  vehicles[0]: truck.old
+                }
+
+                driver_ai : driver.alice {
+                  assigned_truck: truck.old
+                }
+
+                vehicle : truck.old {
+                  license_plate: "OLD"
+                }
+                }
+                """));
+
+        var newer = new SaveSnapshot(
+            "save-2",
+            new DateTimeOffset(2026, 5, 25, 21, 0, 0, TimeSpan.Zero),
+            SiiSaveParser.Parse("""
+                SiiNunit
+                {
+                player : player {
+                  company_name: "Desert Line"
+                }
+
+                garage : garage.denver {
+                  city: denver
+                  drivers: 1
+                  drivers[0]: driver.alice
+                  vehicles: 1
+                  vehicles[0]: truck.new
+                }
+
+                driver_ai : driver.alice {
+                  assigned_truck: truck.new
+                }
+
+                vehicle : truck.new {
+                  license_plate: "NEW"
+                }
+                }
+                """));
+
+        var company = Assert.Single(StatisticsProjection.Build([older, newer]).Companies);
+
+        Assert.Collection(
+            company.DriverTruckAssignments,
+            assignment =>
+            {
+                Assert.Equal("driver.alice", assignment.DriverId);
+                Assert.Equal("truck.old", assignment.TruckId);
+                Assert.Equal("save-1", assignment.EffectiveFromSaveName);
+                Assert.Equal("save-2", assignment.EffectiveToSaveName);
+                Assert.False(assignment.IsCurrent);
+            },
+            assignment =>
+            {
+                Assert.Equal("driver.alice", assignment.DriverId);
+                Assert.Equal("truck.new", assignment.TruckId);
+                Assert.Equal("save-2", assignment.EffectiveFromSaveName);
+                Assert.Null(assignment.EffectiveToSaveName);
+                Assert.True(assignment.IsCurrent);
+            });
+
+        Assert.Collection(
+            company.DriverGarageAssignments,
+            assignment =>
+            {
+                Assert.Equal("garage.phoenix", assignment.GarageId);
+                Assert.Equal("save-1", assignment.EffectiveFromSaveName);
+                Assert.Equal("save-2", assignment.EffectiveToSaveName);
+                Assert.False(assignment.IsCurrent);
+            },
+            assignment =>
+            {
+                Assert.Equal("garage.denver", assignment.GarageId);
+                Assert.Equal("save-2", assignment.EffectiveFromSaveName);
+                Assert.Null(assignment.EffectiveToSaveName);
+                Assert.True(assignment.IsCurrent);
+            });
+    }
+
+    [Fact]
     public void Build_reads_real_ats_profit_log_references_for_garages_and_ai_drivers()
     {
         var snapshot = new SaveSnapshot(
@@ -553,6 +651,136 @@ public sealed class StatisticsProjectionTests
         Assert.Equal("clothes", mission.Cargo);
         Assert.Equal("albuquerque", mission.SourceCity);
         Assert.Equal("phoenix", mission.TargetCity);
+    }
+
+    [Fact]
+    public void Build_creates_city_route_trailer_and_trend_read_models_from_jobs()
+    {
+        var snapshot = new SaveSnapshot(
+            "city-route-models",
+            new DateTimeOffset(2026, 5, 26, 4, 0, 0, TimeSpan.Zero),
+            SiiSaveParser.Parse("""
+                SiiNunit
+                {
+                player : player {
+                  company_name: "Desert Line"
+                }
+
+                garage : garage.phoenix {
+                  city: phoenix
+                  employees[0]: driver.alice
+                  vehicles[0]: truck.alice
+                }
+
+                garage : garage.denver {
+                  city: denver
+                  status: 0
+                }
+
+                driver : driver.alice {
+                  name: "Alice Ramirez"
+                  assigned_truck: truck.alice
+                }
+
+                vehicle : truck.alice {
+                  license_plate: "ATS-100"
+                }
+
+                trailer : trailer.reefer.1 {
+                  trailer_definition: trailer_def.scs.box.reefer
+                }
+
+                job : job.outbound {
+                  driver: driver.alice
+                  truck: truck.alice
+                  trailer: trailer.reefer.1
+                  cargo: cargo.medicine
+                  income: 3000
+                  source_city: phoenix
+                  target_city: denver
+                  timestamp_day: 200
+                }
+
+                job : job.return {
+                  driver: driver.alice
+                  truck: truck.alice
+                  trailer: trailer.reefer.1
+                  cargo: cargo.paper
+                  income: 2500
+                  source_city: denver
+                  target_city: phoenix
+                  timestamp_day: 201
+                }
+                }
+                """));
+
+        var company = Assert.Single(StatisticsProjection.Build([snapshot]).Companies);
+
+        Assert.Collection(
+            company.Cities,
+            city =>
+            {
+                Assert.Equal("phoenix", city.Id);
+                Assert.True(city.HasOwnedGarage);
+                Assert.True(city.IsGarageEligible);
+                Assert.Equal(2, city.VisitCount);
+                Assert.Equal(3000, city.OutboundProfit);
+                Assert.Equal(2500, city.InboundProfit);
+                Assert.Equal(5500, city.BidirectionalProfit);
+                Assert.True(city.ExpansionScore < 1);
+            },
+            city =>
+            {
+                Assert.Equal("denver", city.Id);
+                Assert.False(city.HasOwnedGarage);
+                Assert.True(city.IsGarageEligible);
+                Assert.Equal(2, city.VisitCount);
+                Assert.Equal(2500, city.OutboundProfit);
+                Assert.Equal(3000, city.InboundProfit);
+                Assert.Equal(5500, city.BidirectionalProfit);
+                Assert.True(city.ExpansionScore > 0);
+            });
+
+        Assert.Collection(
+            company.Routes,
+            route =>
+            {
+                Assert.Equal("denver", route.OriginCityId);
+                Assert.Equal("phoenix", route.DestinationCityId);
+                Assert.Equal(2500, route.Profit);
+                Assert.Equal(1, route.JobCount);
+                Assert.Equal(1m, route.ReturnCoverageRatio);
+            },
+            route =>
+            {
+                Assert.Equal("phoenix", route.OriginCityId);
+                Assert.Equal("denver", route.DestinationCityId);
+                Assert.Equal(3000, route.Profit);
+                Assert.Equal(1, route.JobCount);
+                Assert.Equal(1m, route.ReturnCoverageRatio);
+            });
+
+        var trailer = Assert.Single(company.Trailers);
+        Assert.Equal("trailer.reefer.1", trailer.Id);
+        Assert.Equal("trailer_def.scs.box.reefer", trailer.TrailerType);
+        Assert.Equal(5500, trailer.Profit);
+        Assert.Equal(2, trailer.JobCount);
+
+        Assert.Collection(
+            company.ProfitTrends.Where(point => point.EntityKind == "company"),
+            point =>
+            {
+                Assert.Equal("desert-line", point.EntityId);
+                Assert.Equal(200, point.GameDay);
+                Assert.Equal(3000, point.Profit);
+                Assert.Equal(1, point.SampleCount);
+            },
+            point =>
+            {
+                Assert.Equal(201, point.GameDay);
+                Assert.Equal(2500, point.Profit);
+                Assert.Equal(1, point.SampleCount);
+            });
     }
 
     [Fact]

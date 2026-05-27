@@ -328,6 +328,40 @@ public sealed class SqliteMedallionSaveSnapshotSource(
                 primary key (company_id, trailer_type)
             );
 
+            create table if not exists silver_trailers (
+                company_id text not null,
+                trailer_id text not null,
+                trailer_type text not null,
+                profit integer not null,
+                job_count integer not null,
+                primary key (company_id, trailer_id)
+            );
+
+            create table if not exists silver_cities (
+                company_id text not null,
+                city_id text not null,
+                display_name text not null,
+                has_owned_garage integer not null,
+                is_garage_eligible integer not null,
+                visit_count integer not null,
+                outbound_profit integer not null,
+                inbound_profit integer not null,
+                bidirectional_profit integer not null,
+                expansion_score real not null,
+                primary key (company_id, city_id)
+            );
+
+            create table if not exists silver_routes (
+                company_id text not null,
+                origin_city_id text not null,
+                destination_city_id text not null,
+                profit integer not null,
+                job_count integer not null,
+                profit_per_mile real not null,
+                return_coverage_ratio real not null,
+                primary key (company_id, origin_city_id, destination_city_id)
+            );
+
             create table if not exists gold_company_summary (
                 company_id text primary key,
                 display_name text not null,
@@ -425,6 +459,41 @@ public sealed class SqliteMedallionSaveSnapshotSource(
                 driver_id text not null,
                 inferred_deadhead_count integer not null,
                 primary key (company_id, driver_id)
+            );
+
+            create table if not exists gold_city_profitability (
+                company_id text not null,
+                city_id text not null,
+                display_name text not null,
+                has_owned_garage integer not null,
+                is_garage_eligible integer not null,
+                visit_count integer not null,
+                outbound_profit integer not null,
+                inbound_profit integer not null,
+                bidirectional_profit integer not null,
+                expansion_score real not null,
+                primary key (company_id, city_id)
+            );
+
+            create table if not exists gold_route_profitability (
+                company_id text not null,
+                origin_city_id text not null,
+                destination_city_id text not null,
+                profit integer not null,
+                job_count integer not null,
+                profit_per_mile real not null,
+                return_coverage_ratio real not null,
+                primary key (company_id, origin_city_id, destination_city_id)
+            );
+
+            create table if not exists gold_profit_trends (
+                company_id text not null,
+                entity_kind text not null,
+                entity_id text not null,
+                game_day integer not null,
+                profit integer not null,
+                sample_count integer not null,
+                primary key (company_id, entity_kind, entity_id, game_day)
             );
             """;
         await command.ExecuteNonQueryAsync(cancellationToken);
@@ -896,6 +965,9 @@ public sealed class SqliteMedallionSaveSnapshotSource(
             "silver_jobs",
             "silver_driver_recent_jobs",
             "silver_trailer_types",
+            "silver_trailers",
+            "silver_cities",
+            "silver_routes",
             "gold_company_summary",
             "gold_garage_ranking",
             "gold_garage_drivers",
@@ -904,7 +976,10 @@ public sealed class SqliteMedallionSaveSnapshotSource(
             "gold_job_details",
             "gold_driver_recent_jobs",
             "gold_driver_job_pairs",
-            "gold_driver_deadhead_summary"
+            "gold_driver_deadhead_summary",
+            "gold_city_profitability",
+            "gold_route_profitability",
+            "gold_profit_trends"
         })
         {
             await ExecuteAsync(connection, $"delete from {table}", cancellationToken);
@@ -1049,6 +1124,71 @@ public sealed class SqliteMedallionSaveSnapshotSource(
                     ("$trailer_type", trailerType.Id),
                     ("$profit", trailerType.Profit),
                     ("$mission_count", trailerType.MissionCount));
+            }
+
+            foreach (var trailer in company.Trailers)
+            {
+                await ExecuteAsync(
+                    connection,
+                    """
+                    insert into silver_trailers (company_id, trailer_id, trailer_type, profit, job_count)
+                    values ($company_id, $trailer_id, $trailer_type, $profit, $job_count)
+                    """,
+                    cancellationToken,
+                    ("$company_id", company.Id),
+                    ("$trailer_id", trailer.Id),
+                    ("$trailer_type", trailer.TrailerType),
+                    ("$profit", trailer.Profit),
+                    ("$job_count", trailer.JobCount));
+            }
+
+            foreach (var city in company.Cities)
+            {
+                await ExecuteAsync(
+                    connection,
+                    """
+                    insert into silver_cities (
+                        company_id, city_id, display_name, has_owned_garage, is_garage_eligible,
+                        visit_count, outbound_profit, inbound_profit, bidirectional_profit, expansion_score
+                    )
+                    values (
+                        $company_id, $city_id, $display_name, $has_owned_garage, $is_garage_eligible,
+                        $visit_count, $outbound_profit, $inbound_profit, $bidirectional_profit, $expansion_score
+                    )
+                    """,
+                    cancellationToken,
+                    ("$company_id", company.Id),
+                    ("$city_id", city.Id),
+                    ("$display_name", city.DisplayName),
+                    ("$has_owned_garage", city.HasOwnedGarage ? 1 : 0),
+                    ("$is_garage_eligible", city.IsGarageEligible ? 1 : 0),
+                    ("$visit_count", city.VisitCount),
+                    ("$outbound_profit", city.OutboundProfit),
+                    ("$inbound_profit", city.InboundProfit),
+                    ("$bidirectional_profit", city.BidirectionalProfit),
+                    ("$expansion_score", city.ExpansionScore));
+            }
+
+            foreach (var route in company.Routes)
+            {
+                await ExecuteAsync(
+                    connection,
+                    """
+                    insert into silver_routes (
+                        company_id, origin_city_id, destination_city_id, profit, job_count, profit_per_mile, return_coverage_ratio
+                    )
+                    values (
+                        $company_id, $origin_city_id, $destination_city_id, $profit, $job_count, $profit_per_mile, $return_coverage_ratio
+                    )
+                    """,
+                    cancellationToken,
+                    ("$company_id", company.Id),
+                    ("$origin_city_id", route.OriginCityId),
+                    ("$destination_city_id", route.DestinationCityId),
+                    ("$profit", route.Profit),
+                    ("$job_count", route.JobCount),
+                    ("$profit_per_mile", route.ProfitPerMile),
+                    ("$return_coverage_ratio", route.ReturnCoverageRatio));
             }
 
             await ApplyReferenceDriverNamesAsync(connection, cancellationToken);
@@ -1284,6 +1424,72 @@ public sealed class SqliteMedallionSaveSnapshotSource(
                 ("$driver_id", driver.Id),
                 ("$inferred_deadhead_count", CountInferredDeadheads(company, driver)));
         }
+
+        foreach (var city in company.Cities)
+        {
+            await ExecuteAsync(
+                connection,
+                """
+                insert into gold_city_profitability (
+                    company_id, city_id, display_name, has_owned_garage, is_garage_eligible,
+                    visit_count, outbound_profit, inbound_profit, bidirectional_profit, expansion_score
+                )
+                values (
+                    $company_id, $city_id, $display_name, $has_owned_garage, $is_garage_eligible,
+                    $visit_count, $outbound_profit, $inbound_profit, $bidirectional_profit, $expansion_score
+                )
+                """,
+                cancellationToken,
+                ("$company_id", company.Id),
+                ("$city_id", city.Id),
+                ("$display_name", city.DisplayName),
+                ("$has_owned_garage", city.HasOwnedGarage ? 1 : 0),
+                ("$is_garage_eligible", city.IsGarageEligible ? 1 : 0),
+                ("$visit_count", city.VisitCount),
+                ("$outbound_profit", city.OutboundProfit),
+                ("$inbound_profit", city.InboundProfit),
+                ("$bidirectional_profit", city.BidirectionalProfit),
+                ("$expansion_score", city.ExpansionScore));
+        }
+
+        foreach (var route in company.Routes)
+        {
+            await ExecuteAsync(
+                connection,
+                """
+                insert into gold_route_profitability (
+                    company_id, origin_city_id, destination_city_id, profit, job_count, profit_per_mile, return_coverage_ratio
+                )
+                values (
+                    $company_id, $origin_city_id, $destination_city_id, $profit, $job_count, $profit_per_mile, $return_coverage_ratio
+                )
+                """,
+                cancellationToken,
+                ("$company_id", company.Id),
+                ("$origin_city_id", route.OriginCityId),
+                ("$destination_city_id", route.DestinationCityId),
+                ("$profit", route.Profit),
+                ("$job_count", route.JobCount),
+                ("$profit_per_mile", route.ProfitPerMile),
+                ("$return_coverage_ratio", route.ReturnCoverageRatio));
+        }
+
+        foreach (var trend in company.ProfitTrends)
+        {
+            await ExecuteAsync(
+                connection,
+                """
+                insert into gold_profit_trends (company_id, entity_kind, entity_id, game_day, profit, sample_count)
+                values ($company_id, $entity_kind, $entity_id, $game_day, $profit, $sample_count)
+                """,
+                cancellationToken,
+                ("$company_id", company.Id),
+                ("$entity_kind", trend.EntityKind),
+                ("$entity_id", trend.EntityId),
+                ("$game_day", trend.GameDay),
+                ("$profit", trend.Profit),
+                ("$sample_count", trend.SampleCount));
+        }
     }
 
     private static RoutePairKey BuildRoutePairKey(string driverId, string sourceCity, string targetCity)
@@ -1397,7 +1603,11 @@ public sealed class SqliteMedallionSaveSnapshotSource(
                 await ReadTrucksAsync(connection, companyRow.Id, cancellationToken),
                 await ReadMissionsAsync(connection, companyRow.Id, cancellationToken),
                 await ReadTrailerTypesAsync(connection, companyRow.Id, cancellationToken),
-                await ReadRecentDriverJobsAsync(connection, companyRow.Id, cancellationToken)));
+                await ReadRecentDriverJobsAsync(connection, companyRow.Id, cancellationToken),
+                await ReadTrailersAsync(connection, companyRow.Id, cancellationToken),
+                await ReadCitiesAsync(connection, companyRow.Id, cancellationToken),
+                await ReadRoutesAsync(connection, companyRow.Id, cancellationToken),
+                await ReadProfitTrendsAsync(connection, companyRow.Id, cancellationToken)));
         }
 
         return new AtsStatistics(
@@ -1591,6 +1801,123 @@ public sealed class SqliteMedallionSaveSnapshotSource(
         while (await reader.ReadAsync(cancellationToken))
         {
             values.Add(new TrailerTypeStatistic(reader.GetString(0), reader.GetInt64(1), reader.GetInt32(2)));
+        }
+
+        return values;
+    }
+
+    private static async Task<IReadOnlyList<TrailerStatistic>> ReadTrailersAsync(
+        SqliteConnection connection,
+        string companyId,
+        CancellationToken cancellationToken)
+    {
+        var values = new List<TrailerStatistic>();
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            select trailer_id, trailer_type, profit, job_count
+            from silver_trailers
+            where company_id = $company_id
+            order by profit desc, trailer_id
+            """;
+        Add(command, "$company_id", companyId);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            values.Add(new TrailerStatistic(
+                reader.GetString(0),
+                reader.GetString(1),
+                reader.GetInt64(2),
+                reader.GetInt32(3)));
+        }
+
+        return values;
+    }
+
+    private static async Task<IReadOnlyList<CityStatistic>> ReadCitiesAsync(
+        SqliteConnection connection,
+        string companyId,
+        CancellationToken cancellationToken)
+    {
+        var values = new List<CityStatistic>();
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            select city_id, display_name, has_owned_garage, is_garage_eligible,
+                   visit_count, outbound_profit, inbound_profit, bidirectional_profit, expansion_score
+            from gold_city_profitability
+            where company_id = $company_id
+            order by has_owned_garage desc, city_id
+            """;
+        Add(command, "$company_id", companyId);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            values.Add(new CityStatistic(
+                reader.GetString(0),
+                reader.GetString(1),
+                reader.GetInt32(2) != 0,
+                reader.GetInt32(3) != 0,
+                reader.GetInt32(4),
+                reader.GetInt64(5),
+                reader.GetInt64(6),
+                reader.GetInt64(7),
+                reader.GetDecimal(8)));
+        }
+
+        return values;
+    }
+
+    private static async Task<IReadOnlyList<RouteStatistic>> ReadRoutesAsync(
+        SqliteConnection connection,
+        string companyId,
+        CancellationToken cancellationToken)
+    {
+        var values = new List<RouteStatistic>();
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            select origin_city_id, destination_city_id, profit, job_count, profit_per_mile, return_coverage_ratio
+            from gold_route_profitability
+            where company_id = $company_id
+            order by origin_city_id, destination_city_id
+            """;
+        Add(command, "$company_id", companyId);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            values.Add(new RouteStatistic(
+                reader.GetString(0),
+                reader.GetString(1),
+                reader.GetInt64(2),
+                reader.GetInt32(3),
+                reader.GetDecimal(4),
+                reader.GetDecimal(5)));
+        }
+
+        return values;
+    }
+
+    private static async Task<IReadOnlyList<TrendPointStatistic>> ReadProfitTrendsAsync(
+        SqliteConnection connection,
+        string companyId,
+        CancellationToken cancellationToken)
+    {
+        var values = new List<TrendPointStatistic>();
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            select entity_kind, entity_id, game_day, profit, sample_count
+            from gold_profit_trends
+            where company_id = $company_id
+            order by entity_kind, entity_id, game_day
+            """;
+        Add(command, "$company_id", companyId);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            values.Add(new TrendPointStatistic(
+                reader.GetString(0),
+                reader.GetString(1),
+                reader.GetInt32(2),
+                reader.GetInt64(3),
+                reader.GetInt32(4)));
         }
 
         return values;

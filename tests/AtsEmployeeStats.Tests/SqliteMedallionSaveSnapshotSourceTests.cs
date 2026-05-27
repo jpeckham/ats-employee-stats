@@ -336,6 +336,76 @@ public sealed class SqliteMedallionSaveSnapshotSourceTests : IDisposable
                     reader.GetInt64(5))));
     }
 
+    [Fact]
+    public async Task StatisticsService_persists_city_route_trailer_and_trend_read_models()
+    {
+        await WriteCityRouteTrailerAnalyticsAsync();
+        var source = new SqliteMedallionSaveSnapshotSource(_root, _dbPath);
+        var service = new StatisticsService(source);
+
+        var statistics = await service.LoadAsync(CancellationToken.None);
+
+        var company = Assert.Single(statistics.Companies);
+        Assert.Contains(company.Cities, city => city.Id == "phoenix" && city.HasOwnedGarage && city.BidirectionalProfit == 5500);
+        Assert.Contains(company.Cities, city => city.Id == "denver" && city.IsGarageEligible && city.ExpansionScore > 0);
+        Assert.Contains(company.Routes, route => route.OriginCityId == "phoenix" && route.DestinationCityId == "denver" && route.Profit == 3000);
+        Assert.Contains(company.Trailers, trailer => trailer.Id == "trailer.reefer.1" && trailer.Profit == 5500 && trailer.JobCount == 2);
+        Assert.Contains(company.ProfitTrends, point => point.EntityKind == "company" && point.GameDay == 200 && point.Profit == 3000);
+
+        using var connection = OpenTestConnection();
+        await connection.OpenAsync();
+
+        Assert.Equal(
+            ("phoenix", 1, 1, 2, 3000L, 2500L, 5500L),
+            await QuerySingleAsync<(string, int, int, int, long, long, long)>(
+                connection,
+                """
+                select city_id, has_owned_garage, is_garage_eligible, visit_count, outbound_profit, inbound_profit, bidirectional_profit
+                from silver_cities
+                where city_id = 'phoenix'
+                """,
+                reader => (
+                    reader.GetString(0),
+                    reader.GetInt32(1),
+                    reader.GetInt32(2),
+                    reader.GetInt32(3),
+                    reader.GetInt64(4),
+                    reader.GetInt64(5),
+                    reader.GetInt64(6))));
+
+        Assert.Equal(
+            ("phoenix", "denver", 3000L, 1),
+            await QuerySingleAsync<(string, string, long, int)>(
+                connection,
+                """
+                select origin_city_id, destination_city_id, profit, job_count
+                from gold_route_profitability
+                where origin_city_id = 'phoenix'
+                """,
+                reader => (reader.GetString(0), reader.GetString(1), reader.GetInt64(2), reader.GetInt32(3))));
+
+        Assert.Equal(
+            ("trailer.reefer.1", "trailer_def.scs.box.reefer", 5500L, 2),
+            await QuerySingleAsync<(string, string, long, int)>(
+                connection,
+                """
+                select trailer_id, trailer_type, profit, job_count
+                from silver_trailers
+                """,
+                reader => (reader.GetString(0), reader.GetString(1), reader.GetInt64(2), reader.GetInt32(3))));
+
+        Assert.Equal(
+            ("company", "desert-line", 200, 3000L, 1),
+            await QuerySingleAsync<(string, string, int, long, int)>(
+                connection,
+                """
+                select entity_kind, entity_id, game_day, profit, sample_count
+                from gold_profit_trends
+                where entity_kind = 'company' and game_day = 200
+                """,
+                reader => (reader.GetString(0), reader.GetString(1), reader.GetInt32(2), reader.GetInt64(3), reader.GetInt32(4))));
+    }
+
     public void Dispose()
     {
         if (Directory.Exists(_root))
@@ -603,6 +673,68 @@ public sealed class SqliteMedallionSaveSnapshotSourceTests : IDisposable
               income: 2500
               source_city: denver
               target_city: phoenix
+            }
+            }
+            """);
+        File.SetLastWriteTimeUtc(savePath, DateTime.UtcNow);
+    }
+
+    private async Task WriteCityRouteTrailerAnalyticsAsync()
+    {
+        var saveDirectory = Path.Combine(_root, "profiles", "506C61796572", "save", "autosave");
+        Directory.CreateDirectory(saveDirectory);
+        var savePath = Path.Combine(saveDirectory, "game.sii");
+        await File.WriteAllTextAsync(savePath, """
+            SiiNunit
+            {
+            player : player {
+              company_name: "Desert Line"
+            }
+
+            garage : garage.phoenix {
+              city: phoenix
+              employees[0]: driver.alice
+              vehicles[0]: truck.alice
+            }
+
+            garage : garage.denver {
+              city: denver
+              status: 0
+            }
+
+            driver : driver.alice {
+              name: "Alice Ramirez"
+              assigned_truck: truck.alice
+            }
+
+            vehicle : truck.alice {
+              license_plate: "ATS-100"
+            }
+
+            trailer : trailer.reefer.1 {
+              trailer_definition: trailer_def.scs.box.reefer
+            }
+
+            job : job.outbound {
+              driver: driver.alice
+              truck: truck.alice
+              trailer: trailer.reefer.1
+              cargo: cargo.medicine
+              income: 3000
+              source_city: phoenix
+              target_city: denver
+              timestamp_day: 200
+            }
+
+            job : job.return {
+              driver: driver.alice
+              truck: truck.alice
+              trailer: trailer.reefer.1
+              cargo: cargo.paper
+              income: 2500
+              source_city: denver
+              target_city: phoenix
+              timestamp_day: 201
             }
             }
             """);

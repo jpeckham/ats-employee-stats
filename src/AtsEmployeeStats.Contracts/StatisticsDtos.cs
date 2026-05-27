@@ -13,7 +13,11 @@ public sealed record CompanyDto(
     IReadOnlyList<TruckDto> Trucks,
     IReadOnlyList<MissionDto> Missions,
     IReadOnlyList<TrailerTypeDto> TrailerTypes,
-    IReadOnlyList<DriverRecentJobDto>? RecentDriverJobs = null);
+    IReadOnlyList<DriverRecentJobDto>? RecentDriverJobs = null,
+    IReadOnlyList<TrailerDto>? Trailers = null,
+    IReadOnlyList<CityDto>? Cities = null,
+    IReadOnlyList<RouteDto>? Routes = null,
+    SparklineDto? ProfitTrend = null);
 
 public sealed record GarageDto(
     string Id,
@@ -51,7 +55,8 @@ public sealed record MissionDto(
     string? SourceCity,
     string? TargetCity,
     long Profit,
-    int? TimestampDay = null);
+    int? TimestampDay = null,
+    string? TrailerId = null);
 
 public sealed record DriverRecentJobDto(
     string Id,
@@ -70,6 +75,41 @@ public sealed record TrailerTypeDto(
     string Id,
     long Profit,
     int MissionCount);
+
+public sealed record TrailerDto(
+    string Id,
+    string TrailerType,
+    long Profit,
+    int JobCount);
+
+public sealed record CityDto(
+    string Id,
+    string DisplayName,
+    bool HasOwnedGarage,
+    bool IsGarageEligible,
+    int VisitCount,
+    long OutboundProfit,
+    long InboundProfit,
+    long BidirectionalProfit,
+    decimal ExpansionScore);
+
+public sealed record RouteDto(
+    string OriginCityId,
+    string DestinationCityId,
+    long Profit,
+    int JobCount,
+    decimal ProfitPerMile,
+    decimal ReturnCoverageRatio);
+
+public sealed record EntityTrendPointDto(
+    int GameDay,
+    DateTimeOffset? SaveTimeUtc,
+    long Value,
+    int SampleCount);
+
+public sealed record SparklineDto(
+    int WindowDays,
+    IReadOnlyList<EntityTrendPointDto> Points);
 
 public sealed record DashboardConfigDto(
     string SaveRoot,

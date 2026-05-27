@@ -76,4 +76,87 @@ public sealed class StatisticsDashboardMapperTests
         Assert.Equal("truck.alice", recentJob.TruckId);
         Assert.Equal(800, recentJob.Distance);
     }
+
+    [Fact]
+    public void ToDashboardDto_maps_city_route_trailer_and_sparkline_read_models()
+    {
+        var statistics = new AtsStatistics(
+            new DateTimeOffset(2026, 5, 26, 12, 0, 0, TimeSpan.Zero),
+            [
+                new CompanyStatistics(
+                    "desert-line",
+                    "Desert Line",
+                    new DateTimeOffset(2026, 5, 26, 12, 0, 0, TimeSpan.Zero),
+                    [],
+                    [],
+                    [],
+                    [],
+                    [],
+                    [],
+                    [
+                        new TrailerStatistic("trailer.reefer.1", "trailer_def.scs.box.reefer", 5500, 2)
+                    ],
+                    [
+                        new CityStatistic("phoenix", "Phoenix", true, true, 2, 3000, 2500, 5500, 0),
+                        new CityStatistic("denver", "Denver", false, true, 2, 2500, 3000, 5500, 2.25m)
+                    ],
+                    [
+                        new RouteStatistic("phoenix", "denver", 3000, 1, 0, 1),
+                        new RouteStatistic("denver", "phoenix", 2500, 1, 0, 1)
+                    ],
+                    [
+                        new TrendPointStatistic("company", "desert-line", 200, 3000, 1),
+                        new TrendPointStatistic("company", "desert-line", 201, 2500, 1),
+                        new TrendPointStatistic("city", "phoenix", 200, 3000, 1)
+                    ])
+            ]);
+
+        var dto = StatisticsDashboardMapper.ToDashboardDto(statistics, rangeDays: 7);
+
+        var company = Assert.Single(dto.Companies);
+        Assert.NotNull(company.Trailers);
+        var trailer = Assert.Single(company.Trailers);
+        Assert.Equal("trailer.reefer.1", trailer.Id);
+        Assert.Equal("trailer_def.scs.box.reefer", trailer.TrailerType);
+        Assert.Equal(5500, trailer.Profit);
+        Assert.Equal(2, trailer.JobCount);
+
+        Assert.NotNull(company.Cities);
+        Assert.Collection(
+            company.Cities,
+            city =>
+            {
+                Assert.Equal("phoenix", city.Id);
+                Assert.True(city.HasOwnedGarage);
+                Assert.Equal(5500, city.BidirectionalProfit);
+            },
+            city =>
+            {
+                Assert.Equal("denver", city.Id);
+                Assert.True(city.IsGarageEligible);
+                Assert.Equal(2.25m, city.ExpansionScore);
+            });
+
+        Assert.NotNull(company.Routes);
+        var route = Assert.Single(company.Routes, route => route.OriginCityId == "phoenix");
+        Assert.Equal("denver", route.DestinationCityId);
+        Assert.Equal(3000, route.Profit);
+        Assert.Equal(1, route.ReturnCoverageRatio);
+
+        Assert.NotNull(company.ProfitTrend);
+        Assert.Equal(7, company.ProfitTrend.WindowDays);
+        Assert.Collection(
+            company.ProfitTrend.Points,
+            point =>
+            {
+                Assert.Equal(200, point.GameDay);
+                Assert.Equal(3000, point.Value);
+                Assert.Equal(1, point.SampleCount);
+            },
+            point =>
+            {
+                Assert.Equal(201, point.GameDay);
+                Assert.Equal(2500, point.Value);
+            });
+    }
 }

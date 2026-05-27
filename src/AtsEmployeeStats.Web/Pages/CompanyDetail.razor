@@ -67,16 +67,51 @@
                 <span>Trucks</span>
                 <strong>@SelectedCompany.Trucks.Count</strong>
             </div>
+            <div>
+                <span>Trailers</span>
+                <strong>@(SelectedCompany.Trailers?.Count ?? 0)</strong>
+            </div>
+            <div>
+                <span>Jobs</span>
+                <strong>@SelectedCompany.Missions.Count</strong>
+            </div>
+            <div>
+                <span>Cities</span>
+                <strong>@(SelectedCompany.Cities?.Count ?? 0)</strong>
+            </div>
         </section>
 
         <nav class="tabs" aria-label="Company detail sections">
+            <button class="@TabClass("details")" @onclick="@(() => _activeTab = "details")">Details</button>
             <button class="@TabClass("garages")" @onclick="@(() => _activeTab = "garages")">Garages</button>
             <button class="@TabClass("drivers")" @onclick="@(() => _activeTab = "drivers")">Drivers</button>
             <button class="@TabClass("trucks")" @onclick="@(() => _activeTab = "trucks")">Trucks</button>
+            <button class="@TabClass("trailers")" @onclick="@(() => _activeTab = "trailers")">Trailers</button>
+            <button class="@TabClass("jobs")" @onclick="@(() => _activeTab = "jobs")">Jobs</button>
+            <button class="@TabClass("cities")" @onclick="@(() => _activeTab = "cities")">Cities</button>
         </nav>
 
         <section class="content-stack">
-            @if (_activeTab == "garages")
+            @if (_activeTab == "details")
+            {
+                <table>
+                    <caption>Profit Trend</caption>
+                    <thead>
+                        <tr><th>Game day</th><th>Profit</th><th>Samples</th></tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var point in SelectedCompany.ProfitTrend?.Points ?? [])
+                        {
+                            <tr>
+                                <td>@point.GameDay</td>
+                                <td>@Money(point.Value)</td>
+                                <td>@point.SampleCount</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+            else if (_activeTab == "garages")
             {
                 <table>
                     <caption>Garages</caption>
@@ -129,7 +164,7 @@
                 <table>
                     <caption>Trucks</caption>
                     <thead>
-                        <tr><th>Truck</th><th>Profit</th><th>Garage</th><th>Driver</th></tr>
+                        <tr><th>Truck</th><th>Profit</th><th>Garage</th><th>Driver</th><th></th></tr>
                     </thead>
                     <tbody>
                         @foreach (var truck in SelectedCompany.Trucks)
@@ -139,6 +174,83 @@
                                 <td>@Money(truck.Profit)</td>
                                 <td>@(truck.GarageId ?? "-")</td>
                                 <td>@(truck.DriverId ?? "-")</td>
+                                <td class="action-cell">
+                                    <NavLink class="button-link" href="@($"/companies/{Segment(SelectedCompany.Id)}/trucks/{Segment(truck.Id)}")">View</NavLink>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+            else if (_activeTab == "trailers")
+            {
+                <table>
+                    <caption>Trailers</caption>
+                    <thead>
+                        <tr><th>Trailer</th><th>Type</th><th>Profit</th><th>Jobs</th><th></th></tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var trailer in SelectedCompany.Trailers ?? [])
+                        {
+                            <tr>
+                                <td>@trailer.Id</td>
+                                <td>@trailer.TrailerType</td>
+                                <td>@Money(trailer.Profit)</td>
+                                <td>@trailer.JobCount</td>
+                                <td class="action-cell">
+                                    <NavLink class="button-link" href="@($"/companies/{Segment(SelectedCompany.Id)}/trailers/{Segment(trailer.Id)}")">View</NavLink>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+            else if (_activeTab == "jobs")
+            {
+                <table>
+                    <caption>Jobs</caption>
+                    <thead>
+                        <tr><th>Route</th><th>Cargo</th><th>Driver</th><th>Truck</th><th>Trailer</th><th>Profit</th><th></th></tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var job in SelectedCompany.Missions)
+                        {
+                            <tr>
+                                <td>@(job.SourceCity ?? "?") -&gt; @(job.TargetCity ?? "?")</td>
+                                <td>@(job.Cargo ?? "-")</td>
+                                <td>@(job.DriverId ?? "-")</td>
+                                <td>@DashboardViewModel.GetTruckDisplayName(SelectedCompany, job.TruckId)</td>
+                                <td>@(job.TrailerId ?? job.TrailerType ?? "-")</td>
+                                <td>@Money(job.Profit)</td>
+                                <td class="action-cell">
+                                    <NavLink class="button-link" href="@($"/companies/{Segment(SelectedCompany.Id)}/jobs/{Segment(job.Id)}")">View</NavLink>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+            else if (_activeTab == "cities")
+            {
+                <table>
+                    <caption>Cities</caption>
+                    <thead>
+                        <tr><th>City</th><th>Garage</th><th>Eligible</th><th>Visits</th><th>Outbound</th><th>Inbound</th><th>Expansion</th><th></th></tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var city in SelectedCompany.Cities ?? [])
+                        {
+                            <tr>
+                                <td>@city.DisplayName</td>
+                                <td>@(city.HasOwnedGarage ? "Owned" : "-")</td>
+                                <td>@(city.IsGarageEligible ? "Yes" : "No")</td>
+                                <td>@city.VisitCount</td>
+                                <td>@Money(city.OutboundProfit)</td>
+                                <td>@Money(city.InboundProfit)</td>
+                                <td>@city.ExpansionScore</td>
+                                <td class="action-cell">
+                                    <NavLink class="button-link" href="@($"/companies/{Segment(SelectedCompany.Id)}/cities/{Segment(city.Id)}")">View</NavLink>
+                                </td>
                             </tr>
                         }
                     </tbody>
@@ -152,7 +264,7 @@
     [Parameter]
     public string CompanyId { get; set; } = string.Empty;
 
-    private string _activeTab = "garages";
+    private string _activeTab = "details";
 
     private CompanyDto? SelectedCompany =>
         DashboardViewModel.FindCompany(Statistics, CompanyId);

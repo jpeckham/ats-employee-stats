@@ -29,6 +29,24 @@ public sealed record CompanyStatistics
         IReadOnlyList<MissionStatistic> missions,
         IReadOnlyList<TrailerTypeStatistic> trailerTypes,
         IReadOnlyList<DriverRecentJobStatistic> recentDriverJobs)
+        : this(id, displayName, lastUpdated, garages, drivers, trucks, missions, trailerTypes, recentDriverJobs, [], [], [], [])
+    {
+    }
+
+    public CompanyStatistics(
+        string id,
+        string displayName,
+        DateTimeOffset lastUpdated,
+        IReadOnlyList<GarageStatistic> garages,
+        IReadOnlyList<DriverStatistic> drivers,
+        IReadOnlyList<TruckStatistic> trucks,
+        IReadOnlyList<MissionStatistic> missions,
+        IReadOnlyList<TrailerTypeStatistic> trailerTypes,
+        IReadOnlyList<DriverRecentJobStatistic> recentDriverJobs,
+        IReadOnlyList<TrailerStatistic> trailers,
+        IReadOnlyList<CityStatistic> cities,
+        IReadOnlyList<RouteStatistic> routes,
+        IReadOnlyList<TrendPointStatistic> profitTrends)
     {
         Id = id;
         DisplayName = displayName;
@@ -39,6 +57,10 @@ public sealed record CompanyStatistics
         Missions = missions;
         TrailerTypes = trailerTypes;
         RecentDriverJobs = recentDriverJobs;
+        Trailers = trailers;
+        Cities = cities;
+        Routes = routes;
+        ProfitTrends = profitTrends;
     }
 
     public string Id { get; init; }
@@ -50,6 +72,10 @@ public sealed record CompanyStatistics
     public IReadOnlyList<MissionStatistic> Missions { get; init; }
     public IReadOnlyList<TrailerTypeStatistic> TrailerTypes { get; init; }
     public IReadOnlyList<DriverRecentJobStatistic> RecentDriverJobs { get; init; }
+    public IReadOnlyList<TrailerStatistic> Trailers { get; init; }
+    public IReadOnlyList<CityStatistic> Cities { get; init; }
+    public IReadOnlyList<RouteStatistic> Routes { get; init; }
+    public IReadOnlyList<TrendPointStatistic> ProfitTrends { get; init; }
 }
 
 public sealed record GarageStatistic(
@@ -105,3 +131,35 @@ public sealed record TrailerTypeStatistic(
     string Id,
     long Profit,
     int MissionCount);
+
+public sealed record TrailerStatistic(
+    string Id,
+    string TrailerType,
+    long Profit,
+    int JobCount);
+
+public sealed record CityStatistic(
+    string Id,
+    string DisplayName,
+    bool HasOwnedGarage,
+    bool IsGarageEligible,
+    int VisitCount,
+    long OutboundProfit,
+    long InboundProfit,
+    long BidirectionalProfit,
+    decimal ExpansionScore);
+
+public sealed record RouteStatistic(
+    string OriginCityId,
+    string DestinationCityId,
+    long Profit,
+    int JobCount,
+    decimal ProfitPerMile,
+    decimal ReturnCoverageRatio);
+
+public sealed record TrendPointStatistic(
+    string EntityKind,
+    string EntityId,
+    int GameDay,
+    long Profit,
+    int SampleCount);

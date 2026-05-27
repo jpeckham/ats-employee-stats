@@ -57,6 +57,30 @@ public sealed class DashboardViewModelTests
         Assert.Equal("-", DashboardViewModel.GetTruckDisplayName(company, null));
     }
 
+    [Fact]
+    public void Find_helpers_resolve_job_city_truck_trailer_and_route()
+    {
+        var company = CreateCompany();
+
+        Assert.Equal("job.1", DashboardViewModel.FindJob(company, "job.1")?.Id);
+        Assert.Equal("phoenix", DashboardViewModel.FindCity(company, "phoenix")?.Id);
+        Assert.Equal("truck.current", DashboardViewModel.FindTruck(company, "truck.current")?.Id);
+        Assert.Equal("trailer.reefer.1", DashboardViewModel.FindTrailer(company, "trailer.reefer.1")?.Id);
+        Assert.Equal("denver", DashboardViewModel.FindRoute(company, "phoenix", "denver")?.DestinationCityId);
+    }
+
+    [Fact]
+    public void Related_helpers_return_scoped_child_rows_for_detail_pages()
+    {
+        var company = CreateCompany();
+
+        Assert.Equal(["job.1"], DashboardViewModel.GetTruckJobs(company, "truck.current").Select(job => job.Id));
+        Assert.Equal(["job.1", "job.2"], DashboardViewModel.GetTrailerJobs(company, "trailer.reefer.1").Select(job => job.Id));
+        Assert.Equal(["job.1", "job.2"], DashboardViewModel.GetCityJobs(company, "phoenix").Select(job => job.Id));
+        Assert.Equal(["phoenix->denver", "denver->phoenix"], DashboardViewModel.GetCityRoutes(company, "phoenix").Select(route => $"{route.OriginCityId}->{route.DestinationCityId}"));
+        Assert.Equal(["truck.current", "truck.historical"], DashboardViewModel.GetTrailerTrucks(company, "trailer.reefer.1").Select(truck => truck.Id));
+    }
+
     private static CompanyDto CreateCompany() =>
         new(
             "desert-line",
@@ -85,9 +109,9 @@ public sealed class DashboardViewModelTests
                 new TruckDto("truck.other", "ATS-400", 125, "garage.denver", "driver.bob")
             ],
             [
-                new MissionDto("job.1", "driver.alice", "truck.current", "reefer", "medicine", "phoenix", "denver", 3_000),
-                new MissionDto("job.2", "driver.alice", "truck.historical", "flatbed", "steel", "denver", "phoenix", 1_500),
-                new MissionDto("job.3", "driver.bob", "truck.other", "dryvan", "paper", "denver", "vegas", 900)
+                new MissionDto("job.1", "driver.alice", "truck.current", "reefer", "medicine", "phoenix", "denver", 3_000, TrailerId: "trailer.reefer.1"),
+                new MissionDto("job.2", "driver.alice", "truck.historical", "reefer", "steel", "denver", "phoenix", 1_500, TrailerId: "trailer.reefer.1"),
+                new MissionDto("job.3", "driver.bob", "truck.other", "dryvan", "paper", "denver", "vegas", 900, TrailerId: "trailer.dryvan.1")
             ],
             [],
             [
@@ -97,5 +121,24 @@ public sealed class DashboardViewModelTests
                 new DriverRecentJobDto("recent.4", "driver.alice", "truck.historical", "logs", "flagstaff", "phoenix", 1_400, 100, 1_300, 150, 104),
                 new DriverRecentJobDto("recent.5", "driver.alice", "truck.current", "medicine", "phoenix", "denver", 1_500, 100, 1_400, 160, 105),
                 new DriverRecentJobDto("recent.bob", "driver.bob", "truck.other", "paper", "denver", "vegas", 900, 100, 800, 90, 106)
-            ]);
+            ],
+            [
+                new TrailerDto("trailer.reefer.1", "reefer", 4_500, 2),
+                new TrailerDto("trailer.dryvan.1", "dryvan", 900, 1)
+            ],
+            [
+                new CityDto("phoenix", "Phoenix", true, true, 2, 3_000, 1_500, 4_500, 0),
+                new CityDto("denver", "Denver", false, true, 3, 2_400, 3_000, 4_500, 2.25m)
+            ],
+            [
+                new RouteDto("phoenix", "denver", 3_000, 1, 0, 1),
+                new RouteDto("denver", "phoenix", 1_500, 1, 0, 1),
+                new RouteDto("denver", "vegas", 900, 1, 0, 0)
+            ],
+            new SparklineDto(
+                7,
+                [
+                    new EntityTrendPointDto(200, null, 3_000, 1),
+                    new EntityTrendPointDto(201, null, 1_500, 1)
+                ]));
 }
