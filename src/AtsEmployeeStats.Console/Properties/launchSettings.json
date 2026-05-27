@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "AtsEmployeeStats.Console": {
+      "commandName": "Project",
+      "externalConsole": true
+    }
+  }
+}

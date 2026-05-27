@@ -19,7 +19,16 @@ if (saveRoot is null)
 }
 
 var dbPath = options.DbPath ?? CommandLineOptions.DefaultDatabasePath();
-var source = new SqliteMedallionSaveSnapshotSource(saveRoot, dbPath, TimeSpan.FromDays(options.HistoryDays));
+var atsInstallRoot = options.AtsInstallRoot ?? DefaultAtsInstallRoot.Find();
+var referenceDataOptions = new AtsReferenceDataOptions(
+    Enabled: atsInstallRoot is not null,
+    GameInstallRoot: atsInstallRoot,
+    CacheRoot: Path.Combine(Path.GetDirectoryName(dbPath) ?? CommandLineOptions.DefaultDataDirectory(), "reference-cache"));
+var source = new SqliteMedallionSaveSnapshotSource(
+    saveRoot,
+    dbPath,
+    TimeSpan.FromDays(options.HistoryDays),
+    referenceDataOptions);
 var service = new StatisticsService(source);
 
 if (options.Once)
@@ -33,7 +42,13 @@ var app = new TerminalDashboardApp(service, saveRoot);
 await app.RunAsync(CancellationToken.None);
 return 0;
 
-internal sealed record CommandLineOptions(string? SaveRoot, string? DbPath, bool Once, int HistoryDays, DashboardView View)
+internal sealed record CommandLineOptions(
+    string? SaveRoot,
+    string? DbPath,
+    string? AtsInstallRoot,
+    bool Once,
+    int HistoryDays,
+    DashboardView View)
 {
     public const int DefaultHistoryDays = 14;
 
@@ -41,6 +56,7 @@ internal sealed record CommandLineOptions(string? SaveRoot, string? DbPath, bool
     {
         string? saveRoot = null;
         string? dbPath = null;
+        string? atsInstallRoot = null;
         var once = false;
         var historyDays = DefaultHistoryDays;
         var view = DashboardView.Garages;
@@ -54,6 +70,9 @@ internal sealed record CommandLineOptions(string? SaveRoot, string? DbPath, bool
                     break;
                 case "--db-path" when i + 1 < args.Length:
                     dbPath = args[++i];
+                    break;
+                case "--ats-install-root" when i + 1 < args.Length:
+                    atsInstallRoot = args[++i];
                     break;
                 case "--once":
                     once = true;
@@ -69,14 +88,16 @@ internal sealed record CommandLineOptions(string? SaveRoot, string? DbPath, bool
             }
         }
 
-        return new CommandLineOptions(saveRoot, dbPath, once, historyDays, view);
+        return new CommandLineOptions(saveRoot, dbPath, atsInstallRoot, once, historyDays, view);
     }
 
     public static string DefaultDatabasePath() =>
+        Path.Combine(DefaultDataDirectory(), "ats-employee-stats.db");
+
+    public static string DefaultDataDirectory() =>
         Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "AtsEmployeeStats",
-            "ats-employee-stats.db");
+            "AtsEmployeeStats");
 
     private static bool TryParseView(string value, out DashboardView view)
     {
@@ -95,25 +116,83 @@ internal sealed record CommandLineOptions(string? SaveRoot, string? DbPath, bool
     }
 }
 
-internal static class DefaultAtsSaveRoot
+internal static class DefaultAtsInstallRoot
 {
     public static string? Find()
     {
-        var documents = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
-        if (string.IsNullOrWhiteSpace(documents))
-        {
-            return null;
-        }
-
-        var atsRoot = Path.Combine(documents, "American Truck Simulator");
         var candidates = new[]
         {
-            atsRoot,
-            Path.Combine(atsRoot, "profiles"),
-            Path.Combine(atsRoot, "steam_profiles")
+            Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86),
+                "Steam",
+                "steamapps",
+                "common",
+                "American Truck Simulator")
         };
 
+        return candidates.FirstOrDefault(path => File.Exists(Path.Combine(path, "locale.scs")));
+    }
+}
+
+internal static class DefaultAtsSaveRoot
+{
+    private const string AtsAppId = "270880";
+
+    public static string? Find()
+    {
+        var candidates = new List<string>();
+
+        var steamPath = FindSteamPath();
+        if (steamPath is not null)
+        {
+            var userdataRoot = Path.Combine(steamPath, "userdata");
+            if (Directory.Exists(userdataRoot))
+            {
+                foreach (var userDir in Directory.EnumerateDirectories(userdataRoot))
+                {
+                    var remote = Path.Combine(userDir, AtsAppId, "remote");
+                    candidates.Add(Path.Combine(remote, "profiles"));
+                    candidates.Add(Path.Combine(remote, "steam_profiles"));
+                    candidates.Add(remote);
+                }
+            }
+        }
+
+        var documents = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
+        if (!string.IsNullOrWhiteSpace(documents))
+        {
+            var atsRoot = Path.Combine(documents, "American Truck Simulator");
+            candidates.Add(atsRoot);
+            candidates.Add(Path.Combine(atsRoot, "profiles"));
+            candidates.Add(Path.Combine(atsRoot, "steam_profiles"));
+        }
+
         return candidates.FirstOrDefault(Directory.Exists);
+    }
+
+    private static string? FindSteamPath()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            try
+            {
+                using var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(@"SOFTWARE\Valve\Steam");
+                if (key?.GetValue("SteamPath") is string regPath &&
+                    !string.IsNullOrWhiteSpace(regPath) &&
+                    Directory.Exists(regPath))
+                {
+                    return regPath;
+                }
+            }
+            catch (Exception ex) when (ex is UnauthorizedAccessException or IOException)
+            {
+            }
+        }
+
+        var defaultPath = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86),
+            "Steam");
+        return Directory.Exists(defaultPath) ? defaultPath : null;
     }
 }
 

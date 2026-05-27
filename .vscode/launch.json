@@ -7,8 +7,6 @@
       "request": "launch",
       "program": "${workspaceFolder}/src/AtsEmployeeStats.Console/bin/Debug/net10.0/AtsEmployeeStats.Console.dll",
       "args": [
-        "--save-root",
-        "${env:USERPROFILE}\\OneDrive\\Documents\\American Truck Simulator",
         "--history-days",
         "5"
       ],

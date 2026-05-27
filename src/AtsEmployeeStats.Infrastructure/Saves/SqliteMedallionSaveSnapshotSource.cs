@@ -12,7 +12,10 @@ namespace AtsEmployeeStats.Infrastructure.Saves;
 public sealed class SqliteMedallionSaveSnapshotSource(
     string rootPath,
     string databasePath,
-    TimeSpan? historyWindow = null) : ISaveSnapshotSource, IStatisticsQuerySource
+    TimeSpan? historyWindow = null,
+    AtsReferenceDataOptions? referenceDataOptions = null,
+    IScsExtractorDownloader? scsExtractorDownloader = null,
+    IScsArchiveExtractor? scsArchiveExtractor = null) : ISaveSnapshotSource, IStatisticsQuerySource
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private readonly SiiSaveTextDecoder _decoder = new();
@@ -44,7 +47,7 @@ public sealed class SqliteMedallionSaveSnapshotSource(
             TotalUnits: 0,
             Message: "Discovering game.sii files..."));
 
-        var paths = DiscoverCandidatePaths();
+        var paths = DiscoverCandidatePaths(cancellationToken);
         progress?.Report(new SaveLoadProgress(
             SaveLoadStage.FilesDiscovered,
             CompletedFiles: 0,
@@ -81,17 +84,28 @@ public sealed class SqliteMedallionSaveSnapshotSource(
                 continue;
             }
 
-            metadata = await ReadHashedFileMetadataAsync(metadata, cancellationToken);
-
-            var snapshot = await TryIngestSnapshotAsync(
-                connection,
-                metadata,
-                completedFiles,
-                paths.Count,
-                completedUnits,
-                estimatedTotalUnits,
-                progress,
-                cancellationToken);
+            SaveSnapshot? snapshot;
+            try
+            {
+                metadata = await ReadHashedFileMetadataAsync(metadata, cancellationToken);
+                snapshot = await TryIngestSnapshotAsync(
+                    connection,
+                    metadata,
+                    completedFiles,
+                    paths.Count,
+                    completedUnits,
+                    estimatedTotalUnits,
+                    progress,
+                    cancellationToken);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch
+            {
+                snapshot = null;
+            }
             completedFiles++;
 
             if (snapshot is not null)
@@ -150,6 +164,7 @@ public sealed class SqliteMedallionSaveSnapshotSource(
 
         await using var connection = await OpenDatabaseAsync(cancellationToken);
         await EnsureSchemaAsync(connection, cancellationToken);
+        await IngestReferenceDataAsync(connection, cancellationToken);
         await PersistSilverAndGoldAsync(connection, statistics, cancellationToken);
         return await ReadGoldStatisticsAsync(connection, cancellationToken);
     }
@@ -212,6 +227,27 @@ public sealed class SqliteMedallionSaveSnapshotSource(
                 array_values_json text not null,
                 primary key (save_id, unit_ordinal),
                 foreign key (save_id) references bronze_save_files(save_id) on delete cascade
+            );
+
+            create table if not exists bronze_reference_archives (
+                archive_id text primary key,
+                full_path text not null,
+                content_hash text not null,
+                extracted_time_utc text not null,
+                status text not null,
+                error_message text
+            );
+
+            create table if not exists bronze_reference_sii_units (
+                archive_id text not null,
+                relative_path text not null,
+                unit_ordinal integer not null,
+                unit_type text not null,
+                unit_id text not null,
+                scalar_values_json text not null,
+                array_values_json text not null,
+                primary key (archive_id, relative_path, unit_ordinal),
+                foreign key (archive_id) references bronze_reference_archives(archive_id) on delete cascade
             );
 
             create table if not exists silver_companies (
@@ -356,16 +392,15 @@ public sealed class SqliteMedallionSaveSnapshotSource(
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
-    private List<string> DiscoverCandidatePaths()
+    private List<string> DiscoverCandidatePaths(CancellationToken cancellationToken)
     {
         var cutoffUtc = historyWindow is null ? (DateTime?)null : DateTime.UtcNow.Subtract(historyWindow.Value);
         return Directory
             .EnumerateFiles(rootPath, "game.sii", SearchOption.AllDirectories)
             .Select(path => new SavePath(path, File.GetLastWriteTimeUtc(path), GetProfileSegment(path), GetSaveSlot(path)))
             .Where(file => cutoffUtc is null || file.LastWriteTimeUtc >= cutoffUtc)
-            .Where(file => !IsBackupProfile(file.ProfileSegment))
+            .Where(file => !IsBackupPath(file.Path))
             .Where(file => !file.SaveSlot.StartsWith("multiplayer_backup", StringComparison.OrdinalIgnoreCase))
-            .Where(file => IsAutosaveSlot(file.SaveSlot))
             .OrderByDescending(file => file.LastWriteTimeUtc)
             .Select(file => file.Path)
             .ToList();
@@ -468,7 +503,11 @@ public sealed class SqliteMedallionSaveSnapshotSource(
 
             return new SaveSnapshot(metadata.FullPath, metadata.LastWriteTimeUtc, document);
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
         {
             await UpsertFileAsync(connection, metadata, "failed", ex.Message, cancellationToken);
             return null;
@@ -580,6 +619,154 @@ public sealed class SqliteMedallionSaveSnapshotSource(
         {
             var unit = document.Units[i];
             saveIdParameter.Value = saveId;
+            ordinalParameter.Value = i;
+            typeParameter.Value = unit.Type;
+            idParameter.Value = unit.Id;
+            scalarJsonParameter.Value = JsonSerializer.Serialize(unit.Values, JsonOptions);
+            arrayJsonParameter.Value = JsonSerializer.Serialize(unit.Arrays, JsonOptions);
+            await command.ExecuteNonQueryAsync(cancellationToken);
+        }
+    }
+
+    private async Task IngestReferenceDataAsync(SqliteConnection connection, CancellationToken cancellationToken)
+    {
+        if (referenceDataOptions is null || !referenceDataOptions.Enabled)
+        {
+            return;
+        }
+
+        var ingestor = new ScsReferenceDataIngestor(referenceDataOptions, scsExtractorDownloader, scsArchiveExtractor);
+        ExtractedReferenceData? extracted;
+        try
+        {
+            extracted = await ingestor.ExtractLocaleAsync(cancellationToken);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException)
+        {
+            await RecordReferenceExtractionFailureAsync(connection, ex.Message, cancellationToken);
+            return;
+        }
+
+        if (extracted is null)
+        {
+            return;
+        }
+
+        var existingCount = await CountReferenceUnitsAsync(connection, extracted.ArchiveHash, cancellationToken);
+        if (existingCount > 0)
+        {
+            return;
+        }
+
+        await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
+        await ExecuteAsync(
+            connection,
+            """
+            insert or replace into bronze_reference_archives (
+                archive_id, full_path, content_hash, extracted_time_utc, status, error_message
+            )
+            values ($archive_id, $full_path, $content_hash, $extracted_time_utc, $status, $error_message)
+            """,
+            cancellationToken,
+            ("$archive_id", extracted.ArchiveHash),
+            ("$full_path", extracted.ArchivePath),
+            ("$content_hash", extracted.ArchiveHash),
+            ("$extracted_time_utc", FormatUtc(DateTime.UtcNow)),
+            ("$status", "parsed"),
+            ("$error_message", null));
+        await ExecuteAsync(
+            connection,
+            "delete from bronze_reference_sii_units where archive_id = $archive_id",
+            cancellationToken,
+            ("$archive_id", extracted.ArchiveHash));
+
+        foreach (var path in Directory.EnumerateFiles(extracted.OutputDirectory, "driver_names.sii", SearchOption.AllDirectories))
+        {
+            var relativePath = Path.GetRelativePath(extracted.OutputDirectory, path)
+                .Replace(Path.DirectorySeparatorChar, '/')
+                .Replace(Path.AltDirectorySeparatorChar, '/');
+            var document = SiiSaveParser.Parse(await File.ReadAllTextAsync(path, cancellationToken));
+            await InsertReferenceUnitsAsync(connection, extracted.ArchiveHash, relativePath, document, cancellationToken);
+        }
+
+        await transaction.CommitAsync(cancellationToken);
+    }
+
+    private async Task RecordReferenceExtractionFailureAsync(
+        SqliteConnection connection,
+        string message,
+        CancellationToken cancellationToken)
+    {
+        await ExecuteAsync(
+            connection,
+            """
+            insert or replace into bronze_reference_archives (
+                archive_id, full_path, content_hash, extracted_time_utc, status, error_message
+            )
+            values ($archive_id, $full_path, $content_hash, $extracted_time_utc, $status, $error_message)
+            """,
+            cancellationToken,
+            ("$archive_id", "locale-scs-extraction-failed"),
+            ("$full_path", referenceDataOptions?.GameInstallRoot ?? string.Empty),
+            ("$content_hash", string.Empty),
+            ("$extracted_time_utc", FormatUtc(DateTime.UtcNow)),
+            ("$status", "failed"),
+            ("$error_message", message));
+    }
+
+    private static async Task<long> CountReferenceUnitsAsync(
+        SqliteConnection connection,
+        string archiveId,
+        CancellationToken cancellationToken)
+    {
+        await using var command = connection.CreateCommand();
+        command.CommandText = "select count(*) from bronze_reference_sii_units where archive_id = $archive_id";
+        Add(command, "$archive_id", archiveId);
+        return (long)(await command.ExecuteScalarAsync(cancellationToken) ?? 0L);
+    }
+
+    private static async Task InsertReferenceUnitsAsync(
+        SqliteConnection connection,
+        string archiveId,
+        string relativePath,
+        SiiDocument document,
+        CancellationToken cancellationToken)
+    {
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            insert into bronze_reference_sii_units (
+                archive_id,
+                relative_path,
+                unit_ordinal,
+                unit_type,
+                unit_id,
+                scalar_values_json,
+                array_values_json
+            )
+            values (
+                $archive_id,
+                $relative_path,
+                $unit_ordinal,
+                $unit_type,
+                $unit_id,
+                $scalar_values_json,
+                $array_values_json
+            )
+            """;
+        var archiveIdParameter = command.Parameters.Add("$archive_id", SqliteType.Text);
+        var relativePathParameter = command.Parameters.Add("$relative_path", SqliteType.Text);
+        var ordinalParameter = command.Parameters.Add("$unit_ordinal", SqliteType.Integer);
+        var typeParameter = command.Parameters.Add("$unit_type", SqliteType.Text);
+        var idParameter = command.Parameters.Add("$unit_id", SqliteType.Text);
+        var scalarJsonParameter = command.Parameters.Add("$scalar_values_json", SqliteType.Text);
+        var arrayJsonParameter = command.Parameters.Add("$array_values_json", SqliteType.Text);
+        await command.PrepareAsync(cancellationToken);
+
+        for (var i = 0; i < document.Units.Count; i++)
+        {
+            var unit = document.Units[i];
+            archiveIdParameter.Value = archiveId;
+            relativePathParameter.Value = relativePath;
             ordinalParameter.Value = i;
             typeParameter.Value = unit.Type;
             idParameter.Value = unit.Id;
@@ -759,7 +946,31 @@ public sealed class SqliteMedallionSaveSnapshotSource(
             await PersistGoldAsync(connection, company, cancellationToken);
         }
 
+        await ApplyReferenceDriverNamesAsync(connection, cancellationToken);
+
         await transaction.CommitAsync(cancellationToken);
+    }
+
+    private static async Task ApplyReferenceDriverNamesAsync(
+        SqliteConnection connection,
+        CancellationToken cancellationToken)
+    {
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            update silver_drivers
+            set display_name = trim(
+                coalesce(json_extract(ref.scalar_values_json, '$.name'), '') || ' ' ||
+                coalesce(json_extract(ref.scalar_values_json, '$.surname'), '')
+            )
+            from bronze_reference_sii_units ref
+            where ref.unit_id = silver_drivers.driver_id
+              and ref.unit_type in ('driver_name', 'driver')
+              and trim(
+                    coalesce(json_extract(ref.scalar_values_json, '$.name'), '') || ' ' ||
+                    coalesce(json_extract(ref.scalar_values_json, '$.surname'), '')
+                  ) <> ''
+            """;
+        await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
     private static async Task PersistGoldAsync(
@@ -1217,12 +1428,9 @@ public sealed class SqliteMedallionSaveSnapshotSource(
         return saveIndex >= 0 && saveIndex + 1 < parts.Length ? parts[saveIndex + 1] : string.Empty;
     }
 
-    private static bool IsBackupProfile(string profileSegment) =>
-        profileSegment.EndsWith(".bak", StringComparison.OrdinalIgnoreCase);
-
-    private static bool IsAutosaveSlot(string saveSlot) =>
-        saveSlot.StartsWith("autosave", StringComparison.OrdinalIgnoreCase) ||
-        saveSlot.StartsWith("autosave_job", StringComparison.OrdinalIgnoreCase);
+    private static bool IsBackupPath(string path) =>
+        path.Split([Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar], StringSplitOptions.RemoveEmptyEntries)
+            .Any(segment => segment.EndsWith(".bak", StringComparison.OrdinalIgnoreCase));
 
     private static string FormatUtc(DateTime value) =>
         value.ToUniversalTime().ToString("O");

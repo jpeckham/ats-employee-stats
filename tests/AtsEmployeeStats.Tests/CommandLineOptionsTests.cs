@@ -19,6 +19,8 @@ public sealed class CommandLineOptionsTests
             "C:\\ATS",
             "--db-path",
             "C:\\ATS\\stats.db",
+            "--ats-install-root",
+            "C:\\Games\\ATS",
             "--once",
             "--history-days",
             "14",
@@ -28,6 +30,7 @@ public sealed class CommandLineOptionsTests
 
         Assert.Equal("C:\\ATS", options.SaveRoot);
         Assert.Equal("C:\\ATS\\stats.db", options.DbPath);
+        Assert.Equal("C:\\Games\\ATS", options.AtsInstallRoot);
         Assert.True(options.Once);
         Assert.Equal(14, options.HistoryDays);
         Assert.Equal(DashboardView.Trailers, options.View);

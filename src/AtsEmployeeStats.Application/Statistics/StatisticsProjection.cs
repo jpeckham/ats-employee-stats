@@ -31,15 +31,20 @@ public static class StatisticsProjection
         var units = latest.Document.Units;
         var unitsById = units.ToDictionary(unit => unit.Id, StringComparer.OrdinalIgnoreCase);
         var garages = units.Where(unit => unit.TypeEquals("garage")).ToList();
-        var drivers = units.Where(unit => unit.TypeEquals("driver") || unit.TypeEquals("driver_ai")).ToList();
-        var trucks = units
-            .Where(unit => unit.TypeEquals("vehicle") || unit.TypeEquals("truck"))
-            .ToList();
         var trailers = units.Where(unit => unit.TypeEquals("trailer")).ToList();
         var jobs = units.Where(unit => unit.TypeEquals("job") || unit.TypeEquals("delivery_log_entry")).ToList();
 
         var driverToGarage = BuildReverseLookup(garages, "employees", "drivers");
         var truckToGarage = BuildReverseLookup(garages, "vehicles");
+
+        var drivers = units
+            .Where(unit => unit.TypeEquals("driver") || unit.TypeEquals("driver_ai"))
+            .Where(unit => driverToGarage.ContainsKey(unit.Id))
+            .ToList();
+        var trucks = units
+            .Where(unit => unit.TypeEquals("vehicle") || unit.TypeEquals("truck"))
+            .Where(unit => truckToGarage.ContainsKey(unit.Id))
+            .ToList();
         var driverToTruck = BuildDriverTruckLookup(drivers, trucks, garages);
         var truckToDriver = driverToTruck
             .GroupBy(pair => pair.Value, StringComparer.OrdinalIgnoreCase)

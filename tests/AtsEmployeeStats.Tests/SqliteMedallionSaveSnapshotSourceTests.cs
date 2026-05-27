@@ -82,7 +82,7 @@ public sealed class SqliteMedallionSaveSnapshotSourceTests : IDisposable
     }
 
     [Fact]
-    public async Task ReadAllAsync_prefers_autosave_slots_and_excludes_backup_locations()
+    public async Task ReadAllAsync_includes_all_save_slots_and_excludes_backup_locations()
     {
         await WriteSaveAsync("manual_save", "Manual Line");
         await WriteSaveAsync("autosave", "Auto Line");
@@ -94,10 +94,12 @@ public sealed class SqliteMedallionSaveSnapshotSourceTests : IDisposable
 
         var snapshots = await source.ReadAllAsync(CancellationToken.None);
 
-        Assert.Collection(
-            snapshots,
-            snapshot => Assert.Contains("autosave_job_1", snapshot.Name, StringComparison.OrdinalIgnoreCase),
-            snapshot => Assert.Contains($"{Path.DirectorySeparatorChar}autosave{Path.DirectorySeparatorChar}", snapshot.Name, StringComparison.OrdinalIgnoreCase));
+        Assert.Equal(3, snapshots.Count);
+        Assert.Contains(snapshots, s => s.Name.Contains("manual_save", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(snapshots, s => s.Name.Contains($"{Path.DirectorySeparatorChar}autosave{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase));
+        Assert.Contains(snapshots, s => s.Name.Contains("autosave_job_1", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(snapshots, s => s.Name.Contains("multiplayer_backup", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(snapshots, s => s.Name.Contains(".bak", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]
