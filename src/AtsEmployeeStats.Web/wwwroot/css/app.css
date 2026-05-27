@@ -30,6 +30,15 @@ button {
     cursor: pointer;
 }
 
+a {
+    color: var(--accent);
+    text-decoration: none;
+}
+
+a:hover {
+    text-decoration: underline;
+}
+
 button.active,
 button:hover:not(:disabled) {
     border-color: var(--accent);
@@ -110,16 +119,55 @@ button:disabled {
     color: var(--muted);
 }
 
+.breadcrumb a,
+.breadcrumb span {
+    color: var(--muted);
+}
+
+.breadcrumb a + a::before,
+.breadcrumb a + span::before,
+.breadcrumb span + a::before,
 .breadcrumb span + span::before {
     content: ">";
     padding: 0 0.5rem;
 }
 
-.dashboard-grid {
+.content-stack {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(310px, 1fr));
     gap: 0.8rem;
-    align-items: start;
+}
+
+.detail-summary {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 0.75rem;
+    margin-bottom: 0.75rem;
+}
+
+.detail-summary div {
+    border: 1px solid var(--line);
+    background: var(--panel);
+    padding: 0.75rem;
+}
+
+.detail-summary span {
+    display: block;
+    color: var(--muted);
+    font-size: 0.78rem;
+    font-weight: 600;
+}
+
+.detail-summary strong {
+    display: block;
+    margin-top: 0.25rem;
+    font-size: 1.05rem;
+}
+
+.tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    margin-bottom: 0.75rem;
 }
 
 table {
@@ -149,21 +197,40 @@ th {
     font-weight: 600;
 }
 
-tbody tr {
-    cursor: pointer;
-}
-
-tbody tr:hover,
-tbody tr.selected {
+tbody tr:hover {
     background: var(--accent-soft);
 }
 
-.wide {
-    grid-column: 1 / -1;
+.action-cell {
+    width: 1%;
+    text-align: right;
+}
+
+.button-link {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 2rem;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    background: var(--panel);
+    color: var(--text);
+    padding: 0.35rem 0.65rem;
+    font-size: 0.9rem;
+}
+
+.button-link:hover {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+    text-decoration: none;
 }
 
 .empty-state {
     padding: 1rem;
     border: 1px solid var(--line);
     background: var(--panel);
+}
+
+.empty-state p {
+    margin: 0 0 0.75rem;
 }

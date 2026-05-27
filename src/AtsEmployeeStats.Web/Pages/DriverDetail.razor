@@ -1,0 +1,178 @@
+@page "/companies/{CompanyId}/drivers/{DriverId}"
+@page "/companies/{CompanyId}/garages/{GarageId}/drivers/{DriverId}"
+@inherits AtsEmployeeStats.Web.Pages.DashboardBase
+
+<main class="dashboard-shell">
+    <section class="topbar">
+        <div>
+            <h1>@(SelectedDriver?.DisplayName ?? "Driver")</h1>
+            <p>@Status</p>
+        </div>
+        <div class="range-toggle" role="group" aria-label="Time range">
+            <button class="@RangeClass(14)" @onclick="() => SetRangeAsync(14)">14 days</button>
+            <button class="@RangeClass(7)" @onclick="() => SetRangeAsync(7)">7 days</button>
+        </div>
+    </section>
+
+    @if (Progress is not null)
+    {
+        <section class="progress-strip" aria-label="Save loading progress">
+            <div>
+                <span>Save files</span>
+                <strong>@FileProgressText</strong>
+                <progress max="@FileProgressMax" value="@FileProgressValue"></progress>
+            </div>
+            <div>
+                <span>Current save</span>
+                <strong>@CurrentSaveProgressText</strong>
+                <progress max="@CurrentSaveProgressMax" value="@CurrentSaveProgressValue"></progress>
+            </div>
+        </section>
+    }
+
+    <nav class="breadcrumb" aria-label="Current location">
+        <NavLink href="/">Companies</NavLink>
+        @if (SelectedCompany is not null)
+        {
+            <NavLink href="@($"/companies/{Segment(SelectedCompany.Id)}")">@SelectedCompany.DisplayName</NavLink>
+        }
+        @if (SelectedCompany is not null && SelectedGarage is not null)
+        {
+            <NavLink href="@($"/companies/{Segment(SelectedCompany.Id)}/garages/{Segment(SelectedGarage.Id)}")">@SelectedGarage.DisplayName</NavLink>
+        }
+        @if (SelectedDriver is not null)
+        {
+            <span>@SelectedDriver.DisplayName</span>
+        }
+    </nav>
+
+    @if (Statistics is null)
+    {
+        <div class="empty-state">Loading driver...</div>
+    }
+    else if (SelectedCompany is null)
+    {
+        <div class="empty-state">
+            <p>Company not found.</p>
+            <NavLink class="button-link" href="/">Back to companies</NavLink>
+        </div>
+    }
+    else if (!string.IsNullOrWhiteSpace(GarageId) && SelectedGarage is null)
+    {
+        <div class="empty-state">
+            <p>Garage not found.</p>
+            <NavLink class="button-link" href="@($"/companies/{Segment(SelectedCompany.Id)}")">Back to company</NavLink>
+        </div>
+    }
+    else if (SelectedDriver is null)
+    {
+        <div class="empty-state">
+            <p>Driver not found.</p>
+            <NavLink class="button-link" href="@ParentHref">Back</NavLink>
+        </div>
+    }
+    else
+    {
+        <section class="detail-summary">
+            <div>
+                <span>Profit</span>
+                <strong>@Money(SelectedDriver.Profit)</strong>
+            </div>
+            <div>
+                <span>$/Day</span>
+                <strong>@Money(SelectedDriver.ProfitPerDay)</strong>
+            </div>
+            <div>
+                <span>Jobs</span>
+                <strong>@SelectedDriver.JobCount</strong>
+            </div>
+            <div>
+                <span>Current truck</span>
+                <strong>@(SelectedDriver.TruckId ?? "-")</strong>
+            </div>
+        </section>
+
+        <nav class="tabs" aria-label="Driver detail sections">
+            <button class="@TabClass("jobs")" @onclick="@(() => _activeTab = "jobs")">Jobs</button>
+            <button class="@TabClass("trucks")" @onclick="@(() => _activeTab = "trucks")">Trucks</button>
+        </nav>
+
+        <section class="content-stack">
+            @if (_activeTab == "jobs")
+            {
+                <table>
+                    <caption>Jobs - @SelectedDriver.DisplayName</caption>
+                    <thead>
+                        <tr><th>Route</th><th>Cargo</th><th>Trailer</th><th>Truck</th><th>Profit</th></tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var mission in DashboardViewModel.GetDriverJobs(SelectedCompany, SelectedDriver.Id))
+                        {
+                            <tr>
+                                <td>@(mission.SourceCity ?? "?") -&gt; @(mission.TargetCity ?? "?")</td>
+                                <td>@(mission.Cargo ?? "-")</td>
+                                <td>@(mission.TrailerType ?? "-")</td>
+                                <td>@(mission.TruckId ?? "-")</td>
+                                <td>@Money(mission.Profit)</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+            else
+            {
+                <table>
+                    <caption>Trucks - @SelectedDriver.DisplayName</caption>
+                    <thead>
+                        <tr><th>Truck</th><th>Profit</th><th>Garage</th><th>Current driver</th></tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var truck in DashboardViewModel.GetDriverTrucks(SelectedCompany, SelectedDriver.Id))
+                        {
+                            <tr>
+                                <td>@truck.DisplayName</td>
+                                <td>@Money(truck.Profit)</td>
+                                <td>@(truck.GarageId ?? "-")</td>
+                                <td>@(truck.DriverId ?? "-")</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+        </section>
+    }
+</main>
+
+@code {
+    [Parameter]
+    public string CompanyId { get; set; } = string.Empty;
+
+    [Parameter]
+    public string? GarageId { get; set; }
+
+    [Parameter]
+    public string DriverId { get; set; } = string.Empty;
+
+    private string _activeTab = "jobs";
+
+    private CompanyDto? SelectedCompany =>
+        DashboardViewModel.FindCompany(Statistics, CompanyId);
+
+    private GarageDto? SelectedGarage =>
+        SelectedCompany is null || string.IsNullOrWhiteSpace(GarageId)
+            ? null
+            : DashboardViewModel.FindGarage(SelectedCompany, GarageId);
+
+    private DriverDto? SelectedDriver =>
+        SelectedCompany is null ? null : DashboardViewModel.FindDriver(SelectedCompany, DriverId);
+
+    private string ParentHref =>
+        SelectedCompany is null
+            ? "/"
+            : SelectedGarage is null
+                ? $"/companies/{Segment(SelectedCompany.Id)}"
+                : $"/companies/{Segment(SelectedCompany.Id)}/garages/{Segment(SelectedGarage.Id)}";
+
+    private string TabClass(string tab) =>
+        _activeTab == tab ? "active" : string.Empty;
+}
