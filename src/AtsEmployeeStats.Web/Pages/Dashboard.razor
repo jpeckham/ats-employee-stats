@@ -1,0 +1,193 @@
+@page "/"
+@inject StatisticsClient StatisticsClient
+@inject StatisticsRealtimeClient RealtimeClient
+@inject DashboardNavigationState Navigation
+@implements IAsyncDisposable
+
+<main class="dashboard-shell">
+    <section class="topbar">
+        <div>
+            <h1>ATS Employee Stats</h1>
+            <p>@_status</p>
+        </div>
+        <div class="range-toggle" role="group" aria-label="Time range">
+            <button class="@RangeClass(14)" @onclick="() => SetRangeAsync(14)">14 days</button>
+            <button class="@RangeClass(7)" @onclick="() => SetRangeAsync(7)">7 days</button>
+        </div>
+    </section>
+
+    <nav class="breadcrumb" aria-label="Current drilldown">
+        <button disabled="@(!Navigation.CanGoBack)" @onclick="GoBackAsync">Back</button>
+        <span>Companies</span>
+        @foreach (var part in Navigation.Breadcrumb)
+        {
+            <span>@part</span>
+        }
+    </nav>
+
+    @if (_statistics is null)
+    {
+        <div class="empty-state">Loading dashboard...</div>
+    }
+    else
+    {
+        <section class="dashboard-grid">
+            <table>
+                <caption>Trucking Companies</caption>
+                <thead>
+                    <tr><th>Company</th><th>Profit</th><th>Garages</th><th>Drivers</th></tr>
+                </thead>
+                <tbody>
+                    @foreach (var company in _statistics.Companies)
+                    {
+                        <tr class="@SelectedClass(company.Id, Navigation.CompanyId)" @onclick="() => SelectCompany(company)">
+                            <td>@company.DisplayName</td>
+                            <td>@Money(company.Profit)</td>
+                            <td>@company.Garages.Count</td>
+                            <td>@company.Drivers.Count</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+
+            @if (SelectedCompany is not null)
+            {
+                <table>
+                    <caption>Garages</caption>
+                    <thead>
+                        <tr><th>Garage</th><th>Profit</th><th>$/Day</th><th>Drivers</th><th>Trucks</th></tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var garage in SelectedCompany.Garages)
+                        {
+                            <tr class="@SelectedClass(garage.Id, Navigation.GarageId)" @onclick="() => SelectGarage(garage)">
+                                <td>@garage.DisplayName</td>
+                                <td>@Money(garage.Profit)</td>
+                                <td>@Money(garage.ProfitPerDay)</td>
+                                <td>@garage.EmployeeCount</td>
+                                <td>@garage.TruckCount</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+
+            @if (SelectedCompany is not null && SelectedGarage is not null)
+            {
+                <table>
+                    <caption>Drivers - @SelectedGarage.DisplayName</caption>
+                    <thead>
+                        <tr><th>Driver</th><th>Profit</th><th>$/Day</th><th>Truck</th><th>Jobs</th></tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var driver in SelectedCompany.Drivers.Where(driver => driver.GarageId == SelectedGarage.Id))
+                        {
+                            <tr class="@SelectedClass(driver.Id, Navigation.DriverId)" @onclick="() => SelectDriver(driver)">
+                                <td>@driver.DisplayName</td>
+                                <td>@Money(driver.Profit)</td>
+                                <td>@Money(driver.ProfitPerDay)</td>
+                                <td>@(driver.TruckId ?? "-")</td>
+                                <td>@driver.JobCount</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+
+            @if (SelectedCompany is not null && SelectedDriver is not null)
+            {
+                <table class="wide">
+                    <caption>Jobs - @SelectedDriver.DisplayName</caption>
+                    <thead>
+                        <tr><th>Route</th><th>Cargo</th><th>Trailer</th><th>Profit</th></tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var mission in SelectedCompany.Missions.Where(mission => mission.DriverId == SelectedDriver.Id))
+                        {
+                            <tr>
+                                <td>@(mission.SourceCity ?? "?") -> @(mission.TargetCity ?? "?")</td>
+                                <td>@(mission.Cargo ?? "-")</td>
+                                <td>@(mission.TrailerType ?? "-")</td>
+                                <td>@Money(mission.Profit)</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+        </section>
+    }
+</main>
+
+@code {
+    private DashboardStatisticsDto? _statistics;
+    private string _status = "Connecting...";
+    private int _rangeDays = 14;
+
+    private CompanyDto? SelectedCompany =>
+        _statistics?.Companies.FirstOrDefault(company => company.Id == Navigation.CompanyId);
+
+    private GarageDto? SelectedGarage =>
+        SelectedCompany?.Garages.FirstOrDefault(garage => garage.Id == Navigation.GarageId);
+
+    private DriverDto? SelectedDriver =>
+        SelectedCompany?.Drivers.FirstOrDefault(driver => driver.Id == Navigation.DriverId);
+
+    protected override async Task OnInitializedAsync()
+    {
+        RealtimeClient.StatusChanged += OnStatusChanged;
+        RealtimeClient.StatisticsUpdated += OnStatisticsUpdated;
+        await RealtimeClient.StartAsync();
+        _statistics = await StatisticsClient.GetStatisticsAsync(_rangeDays);
+        _status = "Loaded.";
+    }
+
+    private async Task SetRangeAsync(int rangeDays)
+    {
+        _rangeDays = rangeDays;
+        _statistics = await StatisticsClient.GetStatisticsAsync(_rangeDays);
+    }
+
+    private void SelectCompany(CompanyDto company) =>
+        Navigation.SelectCompany(company.Id, company.DisplayName);
+
+    private void SelectGarage(GarageDto garage) =>
+        Navigation.SelectGarage(garage.Id, garage.DisplayName);
+
+    private void SelectDriver(DriverDto driver) =>
+        Navigation.SelectDriver(driver.Id, driver.DisplayName);
+
+    private async Task GoBackAsync()
+    {
+        Navigation.Back();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private void OnStatusChanged(DashboardStatusDto status)
+    {
+        _status = status.Message;
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    private void OnStatisticsUpdated(DashboardStatisticsDto statistics)
+    {
+        _statistics = statistics;
+        _status = "Updated.";
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    private string RangeClass(int rangeDays) =>
+        _rangeDays == rangeDays ? "active" : string.Empty;
+
+    private static string SelectedClass(string id, string? selectedId) =>
+        id == selectedId ? "selected" : string.Empty;
+
+    private static string Money(long value) =>
+        string.Create(System.Globalization.CultureInfo.InvariantCulture, $"${value:N0}");
+
+    public async ValueTask DisposeAsync()
+    {
+        RealtimeClient.StatusChanged -= OnStatusChanged;
+        RealtimeClient.StatisticsUpdated -= OnStatisticsUpdated;
+        await RealtimeClient.DisposeAsync();
+    }
+}

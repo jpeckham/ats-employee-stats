@@ -14,6 +14,53 @@
         "kind": "build",
         "isDefault": true
       }
+    },
+    {
+      "label": "test",
+      "type": "process",
+      "command": "dotnet",
+      "args": [
+        "test",
+        "${workspaceFolder}/AtsEmployeeStats.sln"
+      ],
+      "problemMatcher": "$msCompile",
+      "group": "test"
+    },
+    {
+      "label": "stop api port",
+      "type": "shell",
+      "command": "powershell",
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-Command",
+        "$connections = Get-NetTCPConnection -LocalPort 5087 -ErrorAction SilentlyContinue; foreach ($connection in $connections) { Stop-Process -Id $connection.OwningProcess -Force -ErrorAction SilentlyContinue }"
+      ],
+      "problemMatcher": []
+    },
+    {
+      "label": "prepare debug",
+      "dependsOrder": "sequence",
+      "dependsOn": [
+        "stop api port",
+        "build"
+      ],
+      "problemMatcher": []
+    },
+    {
+      "label": "run api",
+      "type": "process",
+      "command": "dotnet",
+      "args": [
+        "run",
+        "--project",
+        "${workspaceFolder}/src/AtsEmployeeStats.Api",
+        "--urls",
+        "http://localhost:5087"
+      ],
+      "problemMatcher": "$msCompile",
+      "isBackground": true
     }
   ]
 }

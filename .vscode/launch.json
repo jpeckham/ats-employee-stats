@@ -5,15 +5,24 @@
       "name": "ATS Employee Stats",
       "type": "coreclr",
       "request": "launch",
-      "program": "${workspaceFolder}/src/AtsEmployeeStats.Console/bin/Debug/net10.0/AtsEmployeeStats.Console.dll",
+      "program": "${workspaceFolder}/src/AtsEmployeeStats.Api/bin/Debug/net10.0/AtsEmployeeStats.Api.dll",
       "args": [
-        "--history-days",
-        "5"
+        "--urls",
+        "http://localhost:5087",
+        "--Statistics:HistoryDays",
+        "14"
       ],
-      "cwd": "${workspaceFolder}",
-      "console": "externalTerminal",
+      "cwd": "${workspaceFolder}/src/AtsEmployeeStats.Api",
+      "env": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      },
+      "console": "integratedTerminal",
       "stopAtEntry": false,
-      "preLaunchTask": "build"
+      "preLaunchTask": "prepare debug",
+      "serverReadyAction": {
+        "action": "openExternally",
+        "pattern": "\\bNow listening on:\\s+(https?://\\S+)"
+      }
     }
   ]
 }

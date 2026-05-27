@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.Server" Version="10.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\AtsEmployeeStats.Application\AtsEmployeeStats.Application.csproj" />
+    <ProjectReference Include="..\AtsEmployeeStats.Contracts\AtsEmployeeStats.Contracts.csproj" />
+    <ProjectReference Include="..\AtsEmployeeStats.Domain\AtsEmployeeStats.Domain.csproj" />
+    <ProjectReference Include="..\AtsEmployeeStats.Infrastructure\AtsEmployeeStats.Infrastructure.csproj" />
+    <ProjectReference Include="..\AtsEmployeeStats.Web\AtsEmployeeStats.Web.csproj" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+</Project>
