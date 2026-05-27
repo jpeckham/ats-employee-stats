@@ -55,9 +55,11 @@ public partial class Program
             int? rangeDays,
             StatisticsService service,
             IOptions<StatisticsApiOptions> options,
+            IHubContext<StatisticsHub> hub,
             CancellationToken cancellationToken) =>
         {
-            var statistics = await service.LoadAsync(cancellationToken);
+            var progress = BuildSignalRProgress(hub, cancellationToken);
+            var statistics = await service.LoadAsync(cancellationToken, progress);
             return StatisticsDashboardMapper.ToDashboardDto(statistics, rangeDays ?? options.Value.HistoryDays);
         });
 
@@ -72,7 +74,8 @@ public partial class Program
                 "StatusChanged",
                 new DashboardStatusDto("Reloading saves...", IsError: false),
                 cancellationToken);
-            var statistics = await service.LoadAsync(cancellationToken);
+            var progress = BuildSignalRProgress(hub, cancellationToken);
+            var statistics = await service.LoadAsync(cancellationToken, progress);
             var dto = StatisticsDashboardMapper.ToDashboardDto(statistics, rangeDays ?? options.Value.HistoryDays);
             await hub.Clients.All.SendAsync("StatisticsUpdated", dto, cancellationToken);
             return Results.Ok(dto);
@@ -83,4 +86,15 @@ public partial class Program
 
         app.Run();
     }
+
+    private static Progress<SaveLoadProgress> BuildSignalRProgress(
+        IHubContext<StatisticsHub> hub,
+        CancellationToken cancellationToken) =>
+        new(update =>
+        {
+            _ = hub.Clients.All.SendAsync(
+                "LoadingProgress",
+                DashboardProgressMapper.ToDashboardProgressDto(update),
+                cancellationToken);
+        });
 }

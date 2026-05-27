@@ -327,6 +327,35 @@ public sealed class StatisticsProjectionTests
     }
 
     [Fact]
+    public void Build_excludes_unowned_garages_with_zero_status()
+    {
+        var snapshot = new SaveSnapshot(
+            "owned-garages",
+            new DateTimeOffset(2026, 5, 26, 9, 0, 0, TimeSpan.Zero),
+            SiiSaveParser.Parse("""
+                SiiNunit
+                {
+                garage : garage.phoenix {
+                  city: phoenix
+                  status: 3
+                  profit_log[0]: 1000
+                }
+
+                garage : garage.tucson {
+                  city: tucson
+                  status: 0
+                  profit_log[0]: 500
+                }
+                }
+                """));
+
+        var company = Assert.Single(StatisticsProjection.Build([snapshot]).Companies);
+
+        var garage = Assert.Single(company.Garages);
+        Assert.Equal("garage.phoenix", garage.Id);
+    }
+
+    [Fact]
     public void Build_treats_profit_log_entries_as_completed_missions()
     {
         var snapshot = new SaveSnapshot(

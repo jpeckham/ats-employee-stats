@@ -34,8 +34,8 @@
         "-NoProfile",
         "-ExecutionPolicy",
         "Bypass",
-        "-Command",
-        "$connections = Get-NetTCPConnection -LocalPort 5087 -ErrorAction SilentlyContinue; foreach ($connection in $connections) { Stop-Process -Id $connection.OwningProcess -Force -ErrorAction SilentlyContinue }"
+        "-File",
+        "${workspaceFolder}/.vscode/stop-api-port.ps1"
       ],
       "problemMatcher": []
     },

@@ -30,7 +30,10 @@ public static class StatisticsProjection
         var latest = snapshots.OrderByDescending(snapshot => snapshot.LastWritten).First();
         var units = latest.Document.Units;
         var unitsById = units.ToDictionary(unit => unit.Id, StringComparer.OrdinalIgnoreCase);
-        var garages = units.Where(unit => unit.TypeEquals("garage")).ToList();
+        var garages = units
+            .Where(unit => unit.TypeEquals("garage"))
+            .Where(IsOwnedGarage)
+            .ToList();
         var trailers = units.Where(unit => unit.TypeEquals("trailer")).ToList();
         var jobs = units.Where(unit => unit.TypeEquals("job") || unit.TypeEquals("delivery_log_entry")).ToList();
 
@@ -114,6 +117,12 @@ public static class StatisticsProjection
             truckStats,
             missionStats,
             trailerStats);
+    }
+
+    private static bool IsOwnedGarage(SiiUnit garage)
+    {
+        var status = garage.GetValue("status");
+        return status is null || !StringComparer.OrdinalIgnoreCase.Equals(status, "0");
     }
 
     private static IEnumerable<HistoricalMission> BuildSnapshotMissions(SaveSnapshot snapshot)

@@ -16,6 +16,22 @@
         </div>
     </section>
 
+    @if (_progress is not null)
+    {
+        <section class="progress-strip" aria-label="Save loading progress">
+            <div>
+                <span>Save files</span>
+                <strong>@FileProgressText</strong>
+                <progress max="@FileProgressMax" value="@FileProgressValue"></progress>
+            </div>
+            <div>
+                <span>Current save</span>
+                <strong>@CurrentSaveProgressText</strong>
+                <progress max="@CurrentSaveProgressMax" value="@CurrentSaveProgressValue"></progress>
+            </div>
+        </section>
+    }
+
     <nav class="breadcrumb" aria-label="Current drilldown">
         <button disabled="@(!Navigation.CanGoBack)" @onclick="GoBackAsync">Back</button>
         <span>Companies</span>
@@ -120,6 +136,7 @@
 
 @code {
     private DashboardStatisticsDto? _statistics;
+    private DashboardProgressDto? _progress;
     private string _status = "Connecting...";
     private int _rangeDays = 14;
 
@@ -132,10 +149,33 @@
     private DriverDto? SelectedDriver =>
         SelectedCompany?.Drivers.FirstOrDefault(driver => driver.Id == Navigation.DriverId);
 
+    private int FileProgressMax =>
+        Math.Max(1, _progress?.TotalFiles ?? 1);
+
+    private int FileProgressValue =>
+        Math.Clamp(_progress?.CompletedFiles ?? 0, 0, FileProgressMax);
+
+    private string FileProgressText =>
+        _progress is { TotalFiles: > 0 }
+            ? $"{_progress.CompletedFiles:N0} of {_progress.TotalFiles:N0}"
+            : "Discovering";
+
+    private int CurrentSaveProgressMax =>
+        Math.Max(1, _progress?.CurrentFileTotalUnits ?? 1);
+
+    private int CurrentSaveProgressValue =>
+        Math.Clamp(_progress?.CurrentFileCompletedUnits ?? 0, 0, CurrentSaveProgressMax);
+
+    private string CurrentSaveProgressText =>
+        _progress is { CurrentFileTotalUnits: > 0 }
+            ? $"{_progress.CurrentFileCompletedUnits:N0} of {_progress.CurrentFileTotalUnits:N0}"
+            : "Waiting";
+
     protected override async Task OnInitializedAsync()
     {
         RealtimeClient.StatusChanged += OnStatusChanged;
         RealtimeClient.StatisticsUpdated += OnStatisticsUpdated;
+        RealtimeClient.LoadingProgress += OnLoadingProgress;
         await RealtimeClient.StartAsync();
         _statistics = await StatisticsClient.GetStatisticsAsync(_rangeDays);
         _status = "Loaded.";
@@ -144,7 +184,9 @@
     private async Task SetRangeAsync(int rangeDays)
     {
         _rangeDays = rangeDays;
+        _status = "Loading selected range...";
         _statistics = await StatisticsClient.GetStatisticsAsync(_rangeDays);
+        _status = "Loaded.";
     }
 
     private void SelectCompany(CompanyDto company) =>
@@ -175,6 +217,13 @@
         _ = InvokeAsync(StateHasChanged);
     }
 
+    private void OnLoadingProgress(DashboardProgressDto progress)
+    {
+        _progress = progress;
+        _status = progress.Message;
+        _ = InvokeAsync(StateHasChanged);
+    }
+
     private string RangeClass(int rangeDays) =>
         _rangeDays == rangeDays ? "active" : string.Empty;
 
@@ -188,6 +237,7 @@
     {
         RealtimeClient.StatusChanged -= OnStatusChanged;
         RealtimeClient.StatisticsUpdated -= OnStatisticsUpdated;
+        RealtimeClient.LoadingProgress -= OnLoadingProgress;
         await RealtimeClient.DisposeAsync();
     }
 }
