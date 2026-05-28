@@ -5,13 +5,23 @@ namespace AtsEmployeeStats.Application.Statistics;
 
 public sealed class StatisticsService(ISaveSnapshotSource saveSnapshotSource)
 {
+    private readonly SemaphoreSlim _ingestionLock = new(1, 1);
+
     public async Task IngestAsync(
         CancellationToken cancellationToken,
         IProgress<SaveLoadProgress>? progress = null)
     {
-        if (saveSnapshotSource is IStatisticsIngestor ingestor)
+        if (saveSnapshotSource is not IStatisticsIngestor ingestor)
+            return;
+
+        await _ingestionLock.WaitAsync(cancellationToken);
+        try
         {
             await ingestor.IngestAsync(cancellationToken, progress);
+        }
+        finally
+        {
+            _ingestionLock.Release();
         }
     }
 

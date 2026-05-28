@@ -9,18 +9,22 @@ public sealed class SaveIngestionService(
     StatisticsService statisticsService,
     IHubContext<StatisticsHub> hub) : IHostedService
 {
+    private readonly CancellationTokenSource _cts = new();
     private Task _ingestionTask = Task.CompletedTask;
 
     public Task StartAsync(CancellationToken cancellationToken)
     {
-        _ingestionTask = RunIngestionAsync();
+        _ingestionTask = RunIngestionAsync(_cts.Token);
         return Task.CompletedTask;
     }
 
-    public Task StopAsync(CancellationToken cancellationToken) =>
-        Task.WhenAny(_ingestionTask, Task.Delay(Timeout.Infinite, cancellationToken));
+    public async Task StopAsync(CancellationToken cancellationToken)
+    {
+        await _cts.CancelAsync();
+        await Task.WhenAny(_ingestionTask, Task.Delay(Timeout.Infinite, cancellationToken));
+    }
 
-    private async Task RunIngestionAsync()
+    private async Task RunIngestionAsync(CancellationToken cancellationToken)
     {
         var progress = new Progress<SaveLoadProgress>(update =>
         {
@@ -31,7 +35,7 @@ public sealed class SaveIngestionService(
 
         try
         {
-            await statisticsService.IngestAsync(CancellationToken.None, progress);
+            await statisticsService.IngestAsync(cancellationToken, progress);
         }
         catch
         {
