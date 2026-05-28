@@ -17,7 +17,8 @@ public sealed class SaveIngestionService(
         return Task.CompletedTask;
     }
 
-    public Task StopAsync(CancellationToken cancellationToken) => _ingestionTask;
+    public Task StopAsync(CancellationToken cancellationToken) =>
+        Task.WhenAny(_ingestionTask, Task.Delay(Timeout.Infinite, cancellationToken));
 
     private async Task RunIngestionAsync()
     {
