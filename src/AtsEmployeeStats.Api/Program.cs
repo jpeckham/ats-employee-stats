@@ -38,7 +38,6 @@ public partial class Program
             return new SqliteMedallionSaveSnapshotSource(
                 options.SaveRoot,
                 options.DatabasePath,
-                TimeSpan.FromDays(options.HistoryDays),
                 referenceDataOptions);
         });
         builder.Services.AddSingleton<StatisticsService>();

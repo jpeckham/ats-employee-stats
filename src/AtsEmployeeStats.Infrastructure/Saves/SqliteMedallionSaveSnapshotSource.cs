@@ -46,7 +46,7 @@ public sealed class SqliteMedallionSaveSnapshotSource(
             TotalUnits: 0,
             Message: "Discovering game.sii files..."));
 
-        var paths = DiscoverCandidatePaths(cancellationToken);
+        var paths = DiscoverCandidatePaths(null, cancellationToken);
         progress?.Report(new SaveLoadProgress(
             SaveLoadStage.FilesDiscovered,
             CompletedFiles: 0,
@@ -168,8 +168,126 @@ public sealed class SqliteMedallionSaveSnapshotSource(
         return await ReadGoldStatisticsAsync(connection, cancellationToken);
     }
 
-    public Task IngestAsync(CancellationToken cancellationToken, IProgress<SaveLoadProgress>? progress = null)
-        => throw new NotImplementedException();
+    public async Task IngestAsync(
+        CancellationToken cancellationToken,
+        IProgress<SaveLoadProgress>? progress = null)
+    {
+        await using var connection = await OpenDatabaseAsync(cancellationToken);
+        await EnsureSchemaAsync(connection, cancellationToken);
+        await IngestReferenceDataAsync(connection, cancellationToken);
+
+        if (!Directory.Exists(rootPath))
+        {
+            progress?.Report(new SaveLoadProgress(
+                SaveLoadStage.Completed,
+                CompletedFiles: 0,
+                TotalFiles: 0,
+                CompletedUnits: 0,
+                TotalUnits: 0,
+                Message: "Save root was not found."));
+            return;
+        }
+
+        var highWaterMark = await GetHighWaterMarkAsync(connection, cancellationToken);
+
+        progress?.Report(new SaveLoadProgress(
+            SaveLoadStage.DiscoveringFiles,
+            CompletedFiles: 0,
+            TotalFiles: 0,
+            CompletedUnits: 0,
+            TotalUnits: 0,
+            Message: "Discovering game.sii files..."));
+
+        var paths = DiscoverCandidatePaths(highWaterMark, cancellationToken);
+
+        progress?.Report(new SaveLoadProgress(
+            SaveLoadStage.FilesDiscovered,
+            CompletedFiles: 0,
+            TotalFiles: paths.Count,
+            CompletedUnits: 0,
+            TotalUnits: 0,
+            Message: $"Found {paths.Count:N0} save file{(paths.Count == 1 ? string.Empty : "s")}."));
+
+        var anyIngested = false;
+        var completedFiles = 0;
+        var completedUnits = 0;
+        var estimatedTotalUnits = 0;
+
+        foreach (var path in paths)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var metadata = ReadFastFileMetadata(path);
+            var cached = await TryReadCachedSnapshotAsync(connection, metadata, cancellationToken);
+            if (cached is not null)
+            {
+                completedFiles++;
+                completedUnits += cached.Document.Units.Count;
+                progress?.Report(new SaveLoadProgress(
+                    SaveLoadStage.FileLoaded,
+                    CompletedFiles: completedFiles,
+                    TotalFiles: paths.Count,
+                    CompletedUnits: completedUnits,
+                    TotalUnits: Math.Max(estimatedTotalUnits, completedUnits),
+                    Message: $"Loaded {completedFiles:N0} of {paths.Count:N0} save files.",
+                    CurrentFile: path,
+                    CurrentFileCompletedUnits: cached.Document.Units.Count,
+                    CurrentFileTotalUnits: cached.Document.Units.Count));
+                continue;
+            }
+
+            try
+            {
+                metadata = await ReadHashedFileMetadataAsync(metadata, cancellationToken);
+                var snapshot = await TryIngestSnapshotAsync(
+                    connection, metadata, completedFiles, paths.Count,
+                    completedUnits, estimatedTotalUnits, progress, cancellationToken);
+                completedFiles++;
+                if (snapshot is not null)
+                {
+                    anyIngested = true;
+                    var unitCount = snapshot.Document.Units.Count;
+                    if (estimatedTotalUnits == 0 && unitCount > 0)
+                        estimatedTotalUnits = unitCount * paths.Count;
+                    completedUnits += unitCount;
+                    progress?.Report(new SaveLoadProgress(
+                        SaveLoadStage.FileLoaded,
+                        CompletedFiles: completedFiles,
+                        TotalFiles: paths.Count,
+                        CompletedUnits: completedUnits,
+                        TotalUnits: Math.Max(estimatedTotalUnits, completedUnits),
+                        Message: $"Loaded {completedFiles:N0} of {paths.Count:N0} save files.",
+                        CurrentFile: path,
+                        CurrentFileCompletedUnits: unitCount,
+                        CurrentFileTotalUnits: unitCount));
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch
+            {
+                completedFiles++;
+            }
+        }
+
+        var goldHasData = await GoldHasDataAsync(connection, cancellationToken);
+        if (anyIngested || !goldHasData)
+        {
+            var allSnapshots = await ReadAllBronzeSnapshotsAsync(connection, cancellationToken);
+            var statistics = StatisticsProjection.Build(allSnapshots);
+            await PersistSilverAndGoldAsync(connection, statistics, cancellationToken);
+            await SetHighWaterMarkAsync(connection, cancellationToken);
+        }
+
+        progress?.Report(new SaveLoadProgress(
+            SaveLoadStage.Completed,
+            CompletedFiles: completedFiles,
+            TotalFiles: paths.Count,
+            CompletedUnits: completedUnits,
+            TotalUnits: Math.Max(estimatedTotalUnits, completedUnits),
+            Message: $"Loaded {completedFiles:N0} save file{(completedFiles == 1 ? string.Empty : "s")}."));
+    }
 
     private async Task<SqliteConnection> OpenDatabaseAsync(CancellationToken cancellationToken)
     {
@@ -557,11 +675,12 @@ public sealed class SqliteMedallionSaveSnapshotSource(
             cancellationToken);
     }
 
-    private List<string> DiscoverCandidatePaths(CancellationToken cancellationToken)
+    private List<string> DiscoverCandidatePaths(DateTime? sinceUtc, CancellationToken cancellationToken)
     {
         return Directory
             .EnumerateFiles(rootPath, "game.sii", SearchOption.AllDirectories)
             .Select(path => new SavePath(path, File.GetLastWriteTimeUtc(path), GetProfileSegment(path), GetSaveSlot(path)))
+            .Where(file => sinceUtc is null || file.LastWriteTimeUtc >= sinceUtc)
             .Where(file => !IsBackupPath(file.Path))
             .Where(file => !file.SaveSlot.StartsWith("multiplayer_backup", StringComparison.OrdinalIgnoreCase))
             .OrderByDescending(file => file.LastWriteTimeUtc)
