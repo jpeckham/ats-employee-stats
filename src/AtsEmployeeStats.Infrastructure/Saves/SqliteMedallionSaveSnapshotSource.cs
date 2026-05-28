@@ -12,10 +12,9 @@ namespace AtsEmployeeStats.Infrastructure.Saves;
 public sealed class SqliteMedallionSaveSnapshotSource(
     string rootPath,
     string databasePath,
-    TimeSpan? historyWindow = null,
     AtsReferenceDataOptions? referenceDataOptions = null,
     IScsExtractorDownloader? scsExtractorDownloader = null,
-    IScsArchiveExtractor? scsArchiveExtractor = null) : ISaveSnapshotSource, IStatisticsQuerySource
+    IScsArchiveExtractor? scsArchiveExtractor = null) : ISaveSnapshotSource, IStatisticsQuerySource, IStatisticsIngestor
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private readonly SiiSaveTextDecoder _decoder = new();
@@ -168,6 +167,9 @@ public sealed class SqliteMedallionSaveSnapshotSource(
         await PersistSilverAndGoldAsync(connection, statistics, cancellationToken);
         return await ReadGoldStatisticsAsync(connection, cancellationToken);
     }
+
+    public Task IngestAsync(CancellationToken cancellationToken, IProgress<SaveLoadProgress>? progress = null)
+        => throw new NotImplementedException();
 
     private async Task<SqliteConnection> OpenDatabaseAsync(CancellationToken cancellationToken)
     {
@@ -552,11 +554,9 @@ public sealed class SqliteMedallionSaveSnapshotSource(
 
     private List<string> DiscoverCandidatePaths(CancellationToken cancellationToken)
     {
-        var cutoffUtc = historyWindow is null ? (DateTime?)null : DateTime.UtcNow.Subtract(historyWindow.Value);
         return Directory
             .EnumerateFiles(rootPath, "game.sii", SearchOption.AllDirectories)
             .Select(path => new SavePath(path, File.GetLastWriteTimeUtc(path), GetProfileSegment(path), GetSaveSlot(path)))
-            .Where(file => cutoffUtc is null || file.LastWriteTimeUtc >= cutoffUtc)
             .Where(file => !IsBackupPath(file.Path))
             .Where(file => !file.SaveSlot.StartsWith("multiplayer_backup", StringComparison.OrdinalIgnoreCase))
             .OrderByDescending(file => file.LastWriteTimeUtc)
