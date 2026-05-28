@@ -53,6 +53,7 @@ public sealed class ScsReferenceDataIngestionTests : IDisposable
         var source = new SqliteMedallionSaveSnapshotSource(saveRoot, _dbPath, referenceDataOptions: options, scsExtractorDownloader: downloader, scsArchiveExtractor: extractor);
         var service = new StatisticsService(source);
 
+        await service.IngestAsync(CancellationToken.None);
         await service.LoadAsync(CancellationToken.None);
 
         Assert.Equal(Path.Combine(gameRoot, "locale.scs"), extractor.ArchivePath);
@@ -89,6 +90,7 @@ public sealed class ScsReferenceDataIngestionTests : IDisposable
             scsArchiveExtractor: new FakeArchiveExtractor());
         var service = new StatisticsService(source);
 
+        await service.IngestAsync(CancellationToken.None);
         var statistics = await service.LoadAsync(CancellationToken.None);
 
         var driver = Assert.Single(Assert.Single(statistics.Companies).Drivers);
@@ -123,6 +125,7 @@ public sealed class ScsReferenceDataIngestionTests : IDisposable
             scsArchiveExtractor: new FailingArchiveExtractor());
         var service = new StatisticsService(source);
 
+        await service.IngestAsync(CancellationToken.None);
         var statistics = await service.LoadAsync(CancellationToken.None);
 
         Assert.Single(statistics.Companies);

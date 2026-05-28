@@ -191,6 +191,7 @@ public sealed class SqliteMedallionSaveSnapshotSourceTests : IDisposable
         var source = new SqliteMedallionSaveSnapshotSource(_root, _dbPath);
         var service = new StatisticsService(source);
 
+        await service.IngestAsync(CancellationToken.None);
         var statistics = await service.LoadAsync(CancellationToken.None);
 
         var company = Assert.Single(statistics.Companies);
@@ -232,6 +233,7 @@ public sealed class SqliteMedallionSaveSnapshotSourceTests : IDisposable
         var source = new SqliteMedallionSaveSnapshotSource(_root, _dbPath);
         var service = new StatisticsService(source);
 
+        await service.IngestAsync(CancellationToken.None);
         var statistics = await service.LoadAsync(CancellationToken.None);
 
         var company = Assert.Single(statistics.Companies);
@@ -293,6 +295,7 @@ public sealed class SqliteMedallionSaveSnapshotSourceTests : IDisposable
         var source = new SqliteMedallionSaveSnapshotSource(_root, _dbPath);
         var service = new StatisticsService(source);
 
+        await service.IngestAsync(CancellationToken.None);
         await service.LoadAsync(CancellationToken.None);
 
         using var connection = OpenTestConnection();
@@ -313,6 +316,7 @@ public sealed class SqliteMedallionSaveSnapshotSourceTests : IDisposable
         var source = new SqliteMedallionSaveSnapshotSource(_root, _dbPath);
         var service = new StatisticsService(source);
 
+        await service.IngestAsync(CancellationToken.None);
         await service.LoadAsync(CancellationToken.None);
 
         using var connection = OpenTestConnection();
@@ -343,6 +347,7 @@ public sealed class SqliteMedallionSaveSnapshotSourceTests : IDisposable
         var source = new SqliteMedallionSaveSnapshotSource(_root, _dbPath);
         var service = new StatisticsService(source);
 
+        await service.IngestAsync(CancellationToken.None);
         var statistics = await service.LoadAsync(CancellationToken.None);
 
         var company = Assert.Single(statistics.Companies);
