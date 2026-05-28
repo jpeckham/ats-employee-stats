@@ -517,6 +517,11 @@ public sealed class SqliteMedallionSaveSnapshotSource(
                 is_current integer not null,
                 primary key (company_id, driver_id, effective_from_save_name)
             );
+
+            create table if not exists app_metadata (
+                key   text primary key,
+                value text not null
+            );
             """;
         await command.ExecuteNonQueryAsync(cancellationToken);
         await EnsureColumnAsync(connection, "silver_trucks", "license_plate", "text", cancellationToken);
@@ -968,6 +973,74 @@ public sealed class SqliteMedallionSaveSnapshotSource(
         }
 
         return new SiiDocument(units);
+    }
+
+    private static async Task<DateTime?> GetHighWaterMarkAsync(
+        SqliteConnection connection,
+        CancellationToken cancellationToken)
+    {
+        await using var command = connection.CreateCommand();
+        command.CommandText = "select value from app_metadata where key = 'last_loaded_save_utc'";
+        var value = await command.ExecuteScalarAsync(cancellationToken) as string;
+        return value is null
+            ? null
+            : DateTime.Parse(value, null, System.Globalization.DateTimeStyles.RoundtripKind);
+    }
+
+    private static async Task SetHighWaterMarkAsync(
+        SqliteConnection connection,
+        CancellationToken cancellationToken)
+    {
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            insert into app_metadata (key, value)
+            select 'last_loaded_save_utc', max(last_write_time_utc)
+            from bronze_save_files
+            where parse_status = 'parsed'
+            on conflict(key) do update set value = excluded.value
+            """;
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    private static async Task<bool> GoldHasDataAsync(
+        SqliteConnection connection,
+        CancellationToken cancellationToken)
+    {
+        await using var command = connection.CreateCommand();
+        command.CommandText = "select count(*) from gold_company_summary";
+        return (long)(await command.ExecuteScalarAsync(cancellationToken) ?? 0L) > 0;
+    }
+
+    private static async Task<IReadOnlyList<SaveSnapshot>> ReadAllBronzeSnapshotsAsync(
+        SqliteConnection connection,
+        CancellationToken cancellationToken)
+    {
+        var rows = new List<(string SaveId, string FullPath, DateTime LastWriteTimeUtc)>();
+        {
+            await using var command = connection.CreateCommand();
+            command.CommandText = """
+                select save_id, full_path, last_write_time_utc
+                from bronze_save_files
+                where parse_status = 'parsed'
+                order by last_write_time_utc desc
+                """;
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                rows.Add((
+                    reader.GetString(0),
+                    reader.GetString(1),
+                    DateTime.Parse(reader.GetString(2), null, System.Globalization.DateTimeStyles.RoundtripKind)));
+            }
+        }
+
+        var snapshots = new List<SaveSnapshot>(rows.Count);
+        foreach (var (saveId, fullPath, lastWriteTimeUtc) in rows)
+        {
+            var document = await ReadBronzeDocumentAsync(connection, saveId, cancellationToken);
+            snapshots.Add(new SaveSnapshot(fullPath, lastWriteTimeUtc, document));
+        }
+        return snapshots;
     }
 
     private static async Task PersistSilverAndGoldAsync(
