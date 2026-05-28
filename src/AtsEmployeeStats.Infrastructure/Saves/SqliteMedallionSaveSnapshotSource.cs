@@ -158,13 +158,8 @@ public sealed class SqliteMedallionSaveSnapshotSource(
         CancellationToken cancellationToken,
         IProgress<SaveLoadProgress>? progress = null)
     {
-        var snapshots = await ReadAllAsync(cancellationToken, progress);
-        var statistics = StatisticsProjection.Build(snapshots);
-
         await using var connection = await OpenDatabaseAsync(cancellationToken);
         await EnsureSchemaAsync(connection, cancellationToken);
-        await IngestReferenceDataAsync(connection, cancellationToken);
-        await PersistSilverAndGoldAsync(connection, statistics, cancellationToken);
         return await ReadGoldStatisticsAsync(connection, cancellationToken);
     }
 
