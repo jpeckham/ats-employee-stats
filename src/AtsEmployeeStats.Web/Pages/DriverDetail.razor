@@ -95,6 +95,7 @@
         <nav class="tabs" aria-label="Driver detail sections">
             <button class="@TabClass("jobs")" @onclick="@(() => _activeTab = "jobs")">Jobs</button>
             <button class="@TabClass("trucks")" @onclick="@(() => _activeTab = "trucks")">Trucks</button>
+            <button class="@TabClass("garages")" @onclick="@(() => _activeTab = "garages")">Garages</button>
         </nav>
 
         <section class="content-stack">
@@ -142,25 +143,78 @@
                     </tbody>
                 </table>
             }
-            else
+            else if (_activeTab == "trucks")
             {
+                var driverTrucks = DashboardViewModel.GetDriverTrucks(SelectedCompany, SelectedDriver.Id);
+                var truckHistory = DashboardViewModel.GetDriverTruckAssignments(SelectedCompany, SelectedDriver.Id);
                 <table>
                     <caption>Trucks - @SelectedDriver.DisplayName</caption>
                     <thead>
-                        <tr><th>Truck</th><th>Profit</th><th>Garage</th><th>Current driver</th></tr>
+                        <tr><th>Truck</th><th>Profit</th><th>Garage</th><th>Current driver</th><th></th></tr>
                     </thead>
                     <tbody>
-                        @foreach (var truck in DashboardViewModel.GetDriverTrucks(SelectedCompany, SelectedDriver.Id))
+                        @foreach (var truck in driverTrucks)
                         {
                             <tr>
                                 <td>@truck.DisplayName</td>
                                 <td>@Money(truck.Profit)</td>
                                 <td>@(truck.GarageId ?? "-")</td>
                                 <td>@(truck.DriverId ?? "-")</td>
+                                <td class="action-cell">
+                                    <NavLink class="button-link" href="@($"/companies/{Segment(SelectedCompany.Id)}/trucks/{Segment(truck.Id)}")">View</NavLink>
+                                </td>
                             </tr>
                         }
                     </tbody>
                 </table>
+                @if (truckHistory.Count > 0)
+                {
+                    <table>
+                        <caption>Truck assignment history - @SelectedDriver.DisplayName</caption>
+                        <thead>
+                            <tr><th>Truck</th><th>From save</th><th>To save</th><th>Current</th></tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var a in truckHistory)
+                            {
+                                <tr>
+                                    <td>@DashboardViewModel.GetTruckDisplayName(SelectedCompany, a.TruckId)</td>
+                                    <td>@a.EffectiveFromSaveName</td>
+                                    <td>@(a.EffectiveToSaveName ?? "-")</td>
+                                    <td>@(a.IsCurrent ? "Yes" : "No")</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                }
+            }
+            else if (_activeTab == "garages")
+            {
+                var garageHistory = DashboardViewModel.GetDriverGarageAssignments(SelectedCompany, SelectedDriver.Id);
+                @if (garageHistory.Count > 0)
+                {
+                    <table>
+                        <caption>Garage assignment history - @SelectedDriver.DisplayName</caption>
+                        <thead>
+                            <tr><th>Garage</th><th>From save</th><th>To save</th><th>Current</th></tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var a in garageHistory)
+                            {
+                                <tr>
+                                    <td>@DashboardViewModel.GetGarageDisplayName(SelectedCompany, a.GarageId)</td>
+                                    <td>@a.EffectiveFromSaveName</td>
+                                    <td>@(a.EffectiveToSaveName ?? "-")</td>
+                                    <td>@(a.IsCurrent ? "Yes" : "No")</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                }
+                else
+                {
+                    <p class="empty-state">No garage assignment history recorded.</p>
+                }
             }
         </section>
     }

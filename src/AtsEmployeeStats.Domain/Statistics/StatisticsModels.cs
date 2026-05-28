@@ -47,6 +47,26 @@ public sealed record CompanyStatistics
         IReadOnlyList<CityStatistic> cities,
         IReadOnlyList<RouteStatistic> routes,
         IReadOnlyList<TrendPointStatistic> profitTrends)
+        : this(id, displayName, lastUpdated, garages, drivers, trucks, missions, trailerTypes, recentDriverJobs, trailers, cities, routes, profitTrends, [], [])
+    {
+    }
+
+    public CompanyStatistics(
+        string id,
+        string displayName,
+        DateTimeOffset lastUpdated,
+        IReadOnlyList<GarageStatistic> garages,
+        IReadOnlyList<DriverStatistic> drivers,
+        IReadOnlyList<TruckStatistic> trucks,
+        IReadOnlyList<MissionStatistic> missions,
+        IReadOnlyList<TrailerTypeStatistic> trailerTypes,
+        IReadOnlyList<DriverRecentJobStatistic> recentDriverJobs,
+        IReadOnlyList<TrailerStatistic> trailers,
+        IReadOnlyList<CityStatistic> cities,
+        IReadOnlyList<RouteStatistic> routes,
+        IReadOnlyList<TrendPointStatistic> profitTrends,
+        IReadOnlyList<DriverTruckAssignmentStatistic> driverTruckAssignments,
+        IReadOnlyList<DriverGarageAssignmentStatistic> driverGarageAssignments)
     {
         Id = id;
         DisplayName = displayName;
@@ -61,6 +81,8 @@ public sealed record CompanyStatistics
         Cities = cities;
         Routes = routes;
         ProfitTrends = profitTrends;
+        DriverTruckAssignments = driverTruckAssignments;
+        DriverGarageAssignments = driverGarageAssignments;
     }
 
     public string Id { get; init; }
@@ -76,6 +98,8 @@ public sealed record CompanyStatistics
     public IReadOnlyList<CityStatistic> Cities { get; init; }
     public IReadOnlyList<RouteStatistic> Routes { get; init; }
     public IReadOnlyList<TrendPointStatistic> ProfitTrends { get; init; }
+    public IReadOnlyList<DriverTruckAssignmentStatistic> DriverTruckAssignments { get; init; }
+    public IReadOnlyList<DriverGarageAssignmentStatistic> DriverGarageAssignments { get; init; }
 }
 
 public sealed record GarageStatistic(
@@ -163,3 +187,17 @@ public sealed record TrendPointStatistic(
     int GameDay,
     long Profit,
     int SampleCount);
+
+public sealed record DriverTruckAssignmentStatistic(
+    string DriverId,
+    string TruckId,
+    string EffectiveFromSaveName,
+    string? EffectiveToSaveName,
+    bool IsCurrent);
+
+public sealed record DriverGarageAssignmentStatistic(
+    string DriverId,
+    string GarageId,
+    string EffectiveFromSaveName,
+    string? EffectiveToSaveName,
+    bool IsCurrent);

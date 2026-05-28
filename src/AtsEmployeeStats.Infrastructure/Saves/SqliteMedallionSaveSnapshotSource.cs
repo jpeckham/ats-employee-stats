@@ -495,6 +495,26 @@ public sealed class SqliteMedallionSaveSnapshotSource(
                 sample_count integer not null,
                 primary key (company_id, entity_kind, entity_id, game_day)
             );
+
+            create table if not exists silver_driver_truck_assignments (
+                company_id text not null,
+                driver_id text not null,
+                truck_id text not null,
+                effective_from_save_name text not null,
+                effective_to_save_name text,
+                is_current integer not null,
+                primary key (company_id, driver_id, effective_from_save_name)
+            );
+
+            create table if not exists silver_driver_garage_assignments (
+                company_id text not null,
+                driver_id text not null,
+                garage_id text not null,
+                effective_from_save_name text not null,
+                effective_to_save_name text,
+                is_current integer not null,
+                primary key (company_id, driver_id, effective_from_save_name)
+            );
             """;
         await command.ExecuteNonQueryAsync(cancellationToken);
         await EnsureColumnAsync(connection, "silver_trucks", "license_plate", "text", cancellationToken);
@@ -979,7 +999,9 @@ public sealed class SqliteMedallionSaveSnapshotSource(
             "gold_driver_deadhead_summary",
             "gold_city_profitability",
             "gold_route_profitability",
-            "gold_profit_trends"
+            "gold_profit_trends",
+            "silver_driver_truck_assignments",
+            "silver_driver_garage_assignments"
         })
         {
             await ExecuteAsync(connection, $"delete from {table}", cancellationToken);
@@ -1490,6 +1512,40 @@ public sealed class SqliteMedallionSaveSnapshotSource(
                 ("$profit", trend.Profit),
                 ("$sample_count", trend.SampleCount));
         }
+
+        foreach (var assignment in company.DriverTruckAssignments)
+        {
+            await ExecuteAsync(
+                connection,
+                """
+                insert into silver_driver_truck_assignments (company_id, driver_id, truck_id, effective_from_save_name, effective_to_save_name, is_current)
+                values ($company_id, $driver_id, $truck_id, $effective_from_save_name, $effective_to_save_name, $is_current)
+                """,
+                cancellationToken,
+                ("$company_id", company.Id),
+                ("$driver_id", assignment.DriverId),
+                ("$truck_id", assignment.TruckId),
+                ("$effective_from_save_name", assignment.EffectiveFromSaveName),
+                ("$effective_to_save_name", assignment.EffectiveToSaveName),
+                ("$is_current", assignment.IsCurrent ? 1 : 0));
+        }
+
+        foreach (var assignment in company.DriverGarageAssignments)
+        {
+            await ExecuteAsync(
+                connection,
+                """
+                insert into silver_driver_garage_assignments (company_id, driver_id, garage_id, effective_from_save_name, effective_to_save_name, is_current)
+                values ($company_id, $driver_id, $garage_id, $effective_from_save_name, $effective_to_save_name, $is_current)
+                """,
+                cancellationToken,
+                ("$company_id", company.Id),
+                ("$driver_id", assignment.DriverId),
+                ("$garage_id", assignment.GarageId),
+                ("$effective_from_save_name", assignment.EffectiveFromSaveName),
+                ("$effective_to_save_name", assignment.EffectiveToSaveName),
+                ("$is_current", assignment.IsCurrent ? 1 : 0));
+        }
     }
 
     private static RoutePairKey BuildRoutePairKey(string driverId, string sourceCity, string targetCity)
@@ -1607,7 +1663,9 @@ public sealed class SqliteMedallionSaveSnapshotSource(
                 await ReadTrailersAsync(connection, companyRow.Id, cancellationToken),
                 await ReadCitiesAsync(connection, companyRow.Id, cancellationToken),
                 await ReadRoutesAsync(connection, companyRow.Id, cancellationToken),
-                await ReadProfitTrendsAsync(connection, companyRow.Id, cancellationToken)));
+                await ReadProfitTrendsAsync(connection, companyRow.Id, cancellationToken),
+                await ReadDriverTruckAssignmentsAsync(connection, companyRow.Id, cancellationToken),
+                await ReadDriverGarageAssignmentsAsync(connection, companyRow.Id, cancellationToken)));
         }
 
         return new AtsStatistics(
@@ -1918,6 +1976,62 @@ public sealed class SqliteMedallionSaveSnapshotSource(
                 reader.GetInt32(2),
                 reader.GetInt64(3),
                 reader.GetInt32(4)));
+        }
+
+        return values;
+    }
+
+    private static async Task<IReadOnlyList<DriverTruckAssignmentStatistic>> ReadDriverTruckAssignmentsAsync(
+        SqliteConnection connection,
+        string companyId,
+        CancellationToken cancellationToken)
+    {
+        var values = new List<DriverTruckAssignmentStatistic>();
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            select driver_id, truck_id, effective_from_save_name, effective_to_save_name, is_current
+            from silver_driver_truck_assignments
+            where company_id = $company_id
+            order by driver_id, is_current, effective_from_save_name
+            """;
+        Add(command, "$company_id", companyId);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            values.Add(new DriverTruckAssignmentStatistic(
+                reader.GetString(0),
+                reader.GetString(1),
+                reader.GetString(2),
+                GetNullableString(reader, 3),
+                reader.GetInt32(4) != 0));
+        }
+
+        return values;
+    }
+
+    private static async Task<IReadOnlyList<DriverGarageAssignmentStatistic>> ReadDriverGarageAssignmentsAsync(
+        SqliteConnection connection,
+        string companyId,
+        CancellationToken cancellationToken)
+    {
+        var values = new List<DriverGarageAssignmentStatistic>();
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            select driver_id, garage_id, effective_from_save_name, effective_to_save_name, is_current
+            from silver_driver_garage_assignments
+            where company_id = $company_id
+            order by driver_id, is_current, effective_from_save_name
+            """;
+        Add(command, "$company_id", companyId);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            values.Add(new DriverGarageAssignmentStatistic(
+                reader.GetString(0),
+                reader.GetString(1),
+                reader.GetString(2),
+                GetNullableString(reader, 3),
+                reader.GetInt32(4) != 0));
         }
 
         return values;

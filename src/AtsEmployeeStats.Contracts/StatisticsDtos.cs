@@ -17,7 +17,9 @@ public sealed record CompanyDto(
     IReadOnlyList<TrailerDto>? Trailers = null,
     IReadOnlyList<CityDto>? Cities = null,
     IReadOnlyList<RouteDto>? Routes = null,
-    SparklineDto? ProfitTrend = null);
+    SparklineDto? ProfitTrend = null,
+    IReadOnlyList<DriverTruckAssignmentDto>? DriverTruckAssignments = null,
+    IReadOnlyList<DriverGarageAssignmentDto>? DriverGarageAssignments = null);
 
 public sealed record GarageDto(
     string Id,
@@ -110,6 +112,20 @@ public sealed record EntityTrendPointDto(
 public sealed record SparklineDto(
     int WindowDays,
     IReadOnlyList<EntityTrendPointDto> Points);
+
+public sealed record DriverTruckAssignmentDto(
+    string DriverId,
+    string TruckId,
+    string EffectiveFromSaveName,
+    string? EffectiveToSaveName,
+    bool IsCurrent);
+
+public sealed record DriverGarageAssignmentDto(
+    string DriverId,
+    string GarageId,
+    string EffectiveFromSaveName,
+    string? EffectiveToSaveName,
+    bool IsCurrent);
 
 public sealed record DashboardConfigDto(
     string SaveRoot,

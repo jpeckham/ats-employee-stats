@@ -91,7 +91,11 @@ public static class StatisticsDashboardMapper
                 route.JobCount,
                 route.ProfitPerMile,
                 route.ReturnCoverageRatio)).ToList(),
-            ToSparkline(company.ProfitTrends, "company", company.Id, rangeDays));
+            ToSparkline(company.ProfitTrends, "company", company.Id, rangeDays),
+            company.DriverTruckAssignments.Select(a => new DriverTruckAssignmentDto(
+                a.DriverId, a.TruckId, a.EffectiveFromSaveName, a.EffectiveToSaveName, a.IsCurrent)).ToList(),
+            company.DriverGarageAssignments.Select(a => new DriverGarageAssignmentDto(
+                a.DriverId, a.GarageId, a.EffectiveFromSaveName, a.EffectiveToSaveName, a.IsCurrent)).ToList());
 
     private static long MoneyPerDay(long value, int rangeDays) =>
         (long)Math.Round(value / (decimal)rangeDays, MidpointRounding.AwayFromZero);

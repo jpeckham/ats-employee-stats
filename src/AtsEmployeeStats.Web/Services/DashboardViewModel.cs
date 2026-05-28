@@ -126,6 +126,30 @@ public static class DashboardViewModel
         return company.Trucks.FirstOrDefault(truck => IdEquals(truck.Id, truckId))?.DisplayName ?? truckId;
     }
 
+    public static string GetGarageDisplayName(CompanyDto company, string? garageId)
+    {
+        if (string.IsNullOrWhiteSpace(garageId))
+        {
+            return "-";
+        }
+
+        return company.Garages.FirstOrDefault(g => IdEquals(g.Id, garageId))?.DisplayName ?? garageId;
+    }
+
+    public static IReadOnlyList<DriverTruckAssignmentDto> GetDriverTruckAssignments(CompanyDto company, string driverId) =>
+        (company.DriverTruckAssignments ?? [])
+            .Where(a => IdEquals(a.DriverId, driverId))
+            .OrderBy(a => a.IsCurrent)
+            .ThenBy(a => a.EffectiveFromSaveName, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+    public static IReadOnlyList<DriverGarageAssignmentDto> GetDriverGarageAssignments(CompanyDto company, string driverId) =>
+        (company.DriverGarageAssignments ?? [])
+            .Where(a => IdEquals(a.DriverId, driverId))
+            .OrderBy(a => a.IsCurrent)
+            .ThenBy(a => a.EffectiveFromSaveName, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
     private static bool IdEquals(string? left, string? right) =>
         StringComparer.OrdinalIgnoreCase.Equals(left, right);
 }

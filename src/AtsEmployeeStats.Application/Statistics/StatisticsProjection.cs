@@ -129,6 +129,7 @@ public static partial class StatisticsProjection
         var routeStats = BuildRouteStats(missionStats);
         var cityStats = BuildCityStats(missionStats, garageStats, routeStats, garageEligibleCityIds);
         var individualTrailerStats = BuildTrailerStats(trailers, missionStats, trailerTypesByTrailer);
+        var (truckAssignments, garageAssignments) = BuildDriverAssignments(snapshots);
         return new CompanyStatistics(
             companyId,
             companyName,
@@ -142,7 +143,95 @@ public static partial class StatisticsProjection
             individualTrailerStats,
             cityStats,
             routeStats,
-            BuildProfitTrends(companyId, missionStats, driverToGarage));
+            BuildProfitTrends(companyId, missionStats, driverToGarage),
+            truckAssignments,
+            garageAssignments);
+    }
+
+    private static (IReadOnlyList<DriverTruckAssignmentStatistic> TruckAssignments, IReadOnlyList<DriverGarageAssignmentStatistic> GarageAssignments) BuildDriverAssignments(
+        IReadOnlyCollection<SaveSnapshot> snapshots)
+    {
+        var sortedSnapshots = snapshots
+            .OrderBy(s => s.LastWritten)
+            .ToList();
+
+        var truckAssignments = new List<DriverTruckAssignmentStatistic>();
+        var garageAssignments = new List<DriverGarageAssignmentStatistic>();
+        var currentTruck = new Dictionary<string, (string TruckId, string FromSaveName)>(StringComparer.OrdinalIgnoreCase);
+        var currentGarage = new Dictionary<string, (string GarageId, string FromSaveName)>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var snapshot in sortedSnapshots)
+        {
+            var units = snapshot.Document.Units;
+            var garages = units.Where(u => u.TypeEquals("garage")).Where(IsOwnedGarage).ToList();
+            var driverToGarageSnapshot = BuildReverseLookup(garages, "employees", "drivers");
+            var truckToGarage = BuildReverseLookup(garages, "vehicles");
+            var drivers = units
+                .Where(u => u.TypeEquals("driver") || u.TypeEquals("driver_ai"))
+                .Where(u => driverToGarageSnapshot.ContainsKey(u.Id))
+                .ToList();
+            var trucks = units
+                .Where(u => u.TypeEquals("vehicle") || u.TypeEquals("truck"))
+                .Where(u => truckToGarage.ContainsKey(u.Id))
+                .ToList();
+            var driverToTruckSnapshot = BuildDriverTruckLookup(drivers, trucks, garages);
+
+            foreach (var driver in drivers)
+            {
+                driverToTruckSnapshot.TryGetValue(driver.Id, out var newTruckId);
+                if (string.IsNullOrWhiteSpace(newTruckId)) continue;
+                if (currentTruck.TryGetValue(driver.Id, out var prevTruck))
+                {
+                    if (!StringComparer.OrdinalIgnoreCase.Equals(prevTruck.TruckId, newTruckId))
+                    {
+                        truckAssignments.Add(new DriverTruckAssignmentStatistic(
+                            driver.Id, prevTruck.TruckId, prevTruck.FromSaveName, snapshot.Name, IsCurrent: false));
+                        currentTruck[driver.Id] = (newTruckId, snapshot.Name);
+                    }
+                }
+                else
+                {
+                    currentTruck[driver.Id] = (newTruckId, snapshot.Name);
+                }
+            }
+
+            foreach (var (driverId, newGarageId) in driverToGarageSnapshot)
+            {
+                if (currentGarage.TryGetValue(driverId, out var prevGarage))
+                {
+                    if (!StringComparer.OrdinalIgnoreCase.Equals(prevGarage.GarageId, newGarageId))
+                    {
+                        garageAssignments.Add(new DriverGarageAssignmentStatistic(
+                            driverId, prevGarage.GarageId, prevGarage.FromSaveName, snapshot.Name, IsCurrent: false));
+                        currentGarage[driverId] = (newGarageId, snapshot.Name);
+                    }
+                }
+                else
+                {
+                    currentGarage[driverId] = (newGarageId, snapshot.Name);
+                }
+            }
+        }
+
+        foreach (var (driverId, (truckId, fromSaveName)) in currentTruck)
+            truckAssignments.Add(new DriverTruckAssignmentStatistic(
+                driverId, truckId, fromSaveName, EffectiveToSaveName: null, IsCurrent: true));
+
+        foreach (var (driverId, (garageId, fromSaveName)) in currentGarage)
+            garageAssignments.Add(new DriverGarageAssignmentStatistic(
+                driverId, garageId, fromSaveName, EffectiveToSaveName: null, IsCurrent: true));
+
+        return (
+            truckAssignments
+                .OrderBy(a => a.DriverId, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(a => a.IsCurrent)
+                .ThenBy(a => a.EffectiveFromSaveName, StringComparer.OrdinalIgnoreCase)
+                .ToList(),
+            garageAssignments
+                .OrderBy(a => a.DriverId, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(a => a.IsCurrent)
+                .ThenBy(a => a.EffectiveFromSaveName, StringComparer.OrdinalIgnoreCase)
+                .ToList());
     }
 
     private static bool IsOwnedGarage(SiiUnit garage)
