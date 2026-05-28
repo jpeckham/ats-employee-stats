@@ -406,6 +406,68 @@ public sealed class SqliteMedallionSaveSnapshotSourceTests : IDisposable
                 reader => (reader.GetString(0), reader.GetString(1), reader.GetInt32(2), reader.GetInt64(3), reader.GetInt32(4))));
     }
 
+    [Fact]
+    public async Task IngestAsync_on_first_run_ingests_all_saves_regardless_of_age()
+    {
+        var oldSavePath = await WriteSaveAsync("manual_save", "Old Line");
+        File.SetLastWriteTimeUtc(oldSavePath, DateTime.UtcNow.AddDays(-30));
+        await WriteSaveAsync("autosave", "New Line");
+
+        var source = new SqliteMedallionSaveSnapshotSource(_root, _dbPath);
+        var service = new StatisticsService(source);
+
+        await service.IngestAsync(CancellationToken.None);
+
+        using var connection = OpenTestConnection();
+        await connection.OpenAsync();
+        using var command = connection.CreateCommand();
+        command.CommandText = "select count(*) from bronze_save_files where parse_status = 'parsed'";
+        Assert.Equal(2L, (long)(await command.ExecuteScalarAsync() ?? 0L));
+    }
+
+    [Fact]
+    public async Task IngestAsync_skips_saves_older_than_high_water_mark_on_subsequent_runs()
+    {
+        await WriteSaveAsync("autosave", "Desert Line");
+        var source = new SqliteMedallionSaveSnapshotSource(_root, _dbPath);
+        var service = new StatisticsService(source);
+
+        await service.IngestAsync(CancellationToken.None);
+
+        var oldSavePath = await WriteRawSaveAsync("manual_save", """
+            SiiNunit
+            {
+            player : player {
+              company_name: "Old Line"
+            }
+            }
+            """);
+        File.SetLastWriteTimeUtc(oldSavePath, DateTime.UtcNow.AddHours(-1));
+
+        await service.IngestAsync(CancellationToken.None);
+
+        using var connection = OpenTestConnection();
+        await connection.OpenAsync();
+        using var command = connection.CreateCommand();
+        command.CommandText = "select count(*) from bronze_save_files";
+        Assert.Equal(1L, (long)(await command.ExecuteScalarAsync() ?? 0L));
+    }
+
+    [Fact]
+    public async Task IngestAsync_reports_no_file_loading_on_second_run_when_no_new_saves()
+    {
+        await WriteSaveAsync("autosave", "Desert Line");
+        var source = new SqliteMedallionSaveSnapshotSource(_root, _dbPath);
+        var service = new StatisticsService(source);
+
+        await service.IngestAsync(CancellationToken.None);
+
+        var progress = new List<SaveLoadProgress>();
+        await service.IngestAsync(CancellationToken.None, new CapturingProgress(progress));
+
+        Assert.DoesNotContain(progress, p => p.Stage == SaveLoadStage.LoadingFiles);
+    }
+
     public void Dispose()
     {
         if (Directory.Exists(_root))
