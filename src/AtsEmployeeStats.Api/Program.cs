@@ -28,7 +28,7 @@ public partial class Program
                     : options.DatabasePath;
                 options.HistoryDays = Math.Max(1, options.HistoryDays);
             });
-        builder.Services.TryAddSingleton<ISaveSnapshotSource>(services =>
+        builder.Services.TryAddSingleton<SqliteMedallionSaveSnapshotSource>(services =>
         {
             var options = services.GetRequiredService<IOptions<StatisticsApiOptions>>().Value;
             var referenceDataOptions = new AtsReferenceDataOptions(
@@ -40,7 +40,12 @@ public partial class Program
                 options.DatabasePath,
                 referenceDataOptions);
         });
+        builder.Services.TryAddSingleton<ISaveSnapshotSource>(sp =>
+            sp.GetRequiredService<SqliteMedallionSaveSnapshotSource>());
+        builder.Services.TryAddSingleton<IStatisticsIngestor>(sp =>
+            sp.GetRequiredService<SqliteMedallionSaveSnapshotSource>());
         builder.Services.AddSingleton<StatisticsService>();
+        builder.Services.AddHostedService<SaveIngestionService>();
 
         var app = builder.Build();
 
@@ -199,6 +204,7 @@ public partial class Program
                 new DashboardStatusDto("Reloading saves...", IsError: false),
                 cancellationToken);
             var progress = BuildSignalRProgress(hub, cancellationToken);
+            await service.IngestAsync(cancellationToken, progress);
             var statistics = await service.LoadAsync(cancellationToken, progress);
             var dto = StatisticsDashboardMapper.ToDashboardDto(statistics, rangeDays ?? options.Value.HistoryDays);
             await hub.Clients.All.SendAsync("StatisticsUpdated", dto, cancellationToken);
