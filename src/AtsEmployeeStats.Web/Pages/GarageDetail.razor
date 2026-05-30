@@ -97,12 +97,12 @@
                     <caption>Drivers - @SelectedGarage.DisplayName</caption>
                     <thead>
                         <tr>
+                            <th></th>
                             <SortableColumnHeader Column="name" ActiveColumn="@_driversSortBy" Descending="@_driversSortDesc" OnSort="SortDriversAsync">Driver</SortableColumnHeader>
                             <SortableColumnHeader Column="profit" ActiveColumn="@_driversSortBy" Descending="@_driversSortDesc" OnSort="SortDriversAsync">Profit</SortableColumnHeader>
                             <SortableColumnHeader Column="profitPerDay" ActiveColumn="@_driversSortBy" Descending="@_driversSortDesc" OnSort="SortDriversAsync">Avg $/day</SortableColumnHeader>
                             <th>Truck</th>
                             <SortableColumnHeader Column="jobCount" ActiveColumn="@_driversSortBy" Descending="@_driversSortDesc" OnSort="SortDriversAsync">Jobs</SortableColumnHeader>
-                            <th></th>
                             <th></th>
                         </tr>
                     </thead>
@@ -110,15 +110,15 @@
                         @foreach (var driver in DashboardViewModel.GetGarageDrivers(SelectedCompany, SelectedGarage.Id))
                         {
                             <tr>
+                                <td class="action-cell">
+                                    <NavLink class="button-link" href="@($"/companies/{Segment(SelectedCompany.Id)}/drivers/{Segment(driver.Id)}")">View</NavLink>
+                                </td>
                                 <td>@driver.DisplayName</td>
                                 <td>@Money(driver.Profit)</td>
                                 <td>@Money(driver.ProfitPerDay)</td>
                                 <td>@DashboardViewModel.GetTruckDisplayName(SelectedCompany, driver.TruckId)</td>
                                 <td>@driver.JobCount</td>
                                 <td>@SparklineSvg(driver.Trend)</td>
-                                <td class="action-cell">
-                                    <NavLink class="button-link" href="@($"/companies/{Segment(SelectedCompany.Id)}/drivers/{Segment(driver.Id)}")">View</NavLink>
-                                </td>
                             </tr>
                         }
                     </tbody>
@@ -130,11 +130,11 @@
                     <caption>Trucks - @SelectedGarage.DisplayName</caption>
                     <thead>
                         <tr>
+                            <th></th>
                             <SortableColumnHeader Column="name" ActiveColumn="@_trucksSortBy" Descending="@_trucksSortDesc" OnSort="SortTrucksAsync">Truck</SortableColumnHeader>
                             <SortableColumnHeader Column="profit" ActiveColumn="@_trucksSortBy" Descending="@_trucksSortDesc" OnSort="SortTrucksAsync">Profit</SortableColumnHeader>
                             <SortableColumnHeader Column="profitPerDay" ActiveColumn="@_trucksSortBy" Descending="@_trucksSortDesc" OnSort="SortTrucksAsync">Avg $/day</SortableColumnHeader>
                             <th>Driver</th>
-                            <th></th>
                             <th></th>
                         </tr>
                     </thead>
@@ -142,14 +142,14 @@
                         @foreach (var truck in DashboardViewModel.GetGarageTrucks(SelectedCompany, SelectedGarage.Id))
                         {
                             <tr>
+                                <td class="action-cell">
+                                    <NavLink class="button-link" href="@($"/companies/{Segment(SelectedCompany.Id)}/trucks/{Segment(truck.Id)}")">View</NavLink>
+                                </td>
                                 <td>@truck.DisplayName</td>
                                 <td>@Money(truck.Profit)</td>
                                 <td>@Money(truck.ProfitPerDay)</td>
                                 <td>@DashboardViewModel.GetDriverDisplayName(SelectedCompany, truck.DriverId)</td>
                                 <td>@SparklineSvg(truck.Trend)</td>
-                                <td class="action-cell">
-                                    <NavLink class="button-link" href="@($"/companies/{Segment(SelectedCompany.Id)}/trucks/{Segment(truck.Id)}")">View</NavLink>
-                                </td>
                             </tr>
                         }
                     </tbody>
@@ -161,11 +161,11 @@
                     <caption>Trailers - @SelectedGarage.DisplayName</caption>
                     <thead>
                         <tr>
+                            <th></th>
                             <SortableColumnHeader Column="name" ActiveColumn="@_trailersSortBy" Descending="@_trailersSortDesc" OnSort="SortTrailersAsync">Trailer</SortableColumnHeader>
                             <SortableColumnHeader Column="profit" ActiveColumn="@_trailersSortBy" Descending="@_trailersSortDesc" OnSort="SortTrailersAsync">Profit</SortableColumnHeader>
                             <SortableColumnHeader Column="profitPerDay" ActiveColumn="@_trailersSortBy" Descending="@_trailersSortDesc" OnSort="SortTrailersAsync">Avg $/day</SortableColumnHeader>
                             <SortableColumnHeader Column="jobCount" ActiveColumn="@_trailersSortBy" Descending="@_trailersSortDesc" OnSort="SortTrailersAsync">Jobs</SortableColumnHeader>
-                            <th></th>
                             <th></th>
                         </tr>
                     </thead>
@@ -173,6 +173,9 @@
                         @foreach (var trailer in DashboardViewModel.GetGarageTrailers(SelectedCompany, SelectedGarage.Id))
                         {
                             <tr>
+                                <td class="action-cell">
+                                    <NavLink class="button-link" href="@($"/companies/{Segment(SelectedCompany.Id)}/trailers/{Segment(trailer.LicensePlate ?? trailer.Id)}")">View</NavLink>
+                                </td>
                                 <td>
                                     @FormatBodyType(trailer.BodyType ?? trailer.TrailerType)
                                     @if (trailer.IsArticulated)
@@ -184,9 +187,6 @@
                                 <td>@Money(trailer.ProfitPerDay)</td>
                                 <td>@trailer.JobCount</td>
                                 <td>@SparklineSvg(trailer.Trend)</td>
-                                <td class="action-cell">
-                                    <NavLink class="button-link" href="@($"/companies/{Segment(SelectedCompany.Id)}/trailers/{Segment(trailer.Id)}")">View</NavLink>
-                                </td>
                             </tr>
                         }
                     </tbody>

@@ -1,15 +1,15 @@
-@page "/companies/{CompanyId}/trailers/{TrailerId}"
+@page "/companies/{CompanyId}/trailers/{LicensePlate}"
 @inherits AtsEmployeeStats.Web.Pages.DashboardBase
 
 <main class="dashboard-shell">
     <section class="topbar">
         <div>
-            <h1>@(SelectedTrailer?.Id ?? "Trailer")</h1>
+            <h1>@(SelectedTrailer?.LicensePlate ?? LicensePlate)</h1>
             <p>@Status</p>
         </div>
-        <div class="range-toggle" role="group" aria-label="Time range">
-            <button class="@RangeClass(14)" @onclick="() => SetRangeAsync(14)">14 days</button>
-            <button class="@RangeClass(7)" @onclick="() => SetRangeAsync(7)">7 days</button>
+        <div class="day-range" role="group" aria-label="Game day range">
+            <label>Days <input type="number" min="0" value="@FromDay" @onchange="SetFromDayAsync" /> – <input type="number" min="0" value="@ToDay" @onchange="SetToDayAsync" /></label>
+
         </div>
     </section>
 
@@ -21,7 +21,7 @@
         }
         @if (SelectedTrailer is not null)
         {
-            <span>@SelectedTrailer.Id</span>
+            <span>@(SelectedTrailer.LicensePlate ?? LicensePlate)</span>
         }
     </nav>
 
@@ -58,14 +58,14 @@
             {
                 <table>
                     <caption>Trucks</caption>
-                    <thead><tr><th>Truck</th><th>Profit</th><th></th></tr></thead>
+                    <thead><tr><th></th><th>Truck</th><th>Profit</th></tr></thead>
                     <tbody>
                         @foreach (var truck in DashboardViewModel.GetTrailerTrucks(SelectedCompany, SelectedTrailer.Id))
                         {
                             <tr>
+                                <td class="action-cell"><NavLink class="button-link" href="@($"/companies/{Segment(SelectedCompany.Id)}/trucks/{Segment(truck.Id)}")">View</NavLink></td>
                                 <td>@truck.DisplayName</td>
                                 <td>@Money(truck.Profit)</td>
-                                <td class="action-cell"><NavLink class="button-link" href="@($"/companies/{Segment(SelectedCompany.Id)}/trucks/{Segment(truck.Id)}")">View</NavLink></td>
                             </tr>
                         }
                     </tbody>
@@ -75,16 +75,16 @@
             {
                 <table>
                     <caption>@(_activeTab == "routes" ? "Route Analytics" : "Jobs")</caption>
-                    <thead><tr><th>Route</th><th>Cargo</th><th>Truck</th><th>Profit</th><th></th></tr></thead>
+                    <thead><tr><th></th><th>Route</th><th>Cargo</th><th>Truck</th><th>Profit</th></tr></thead>
                     <tbody>
                         @foreach (var job in DashboardViewModel.GetTrailerJobs(SelectedCompany, SelectedTrailer.Id))
                         {
                             <tr>
+                                <td class="action-cell"><NavLink class="button-link" href="@($"/companies/{Segment(SelectedCompany.Id)}/jobs/{Segment(job.Id)}")">View</NavLink></td>
                                 <td>@(job.SourceCity ?? "?") -&gt; @(job.TargetCity ?? "?")</td>
                                 <td>@(job.Cargo ?? "-")</td>
                                 <td>@DashboardViewModel.GetTruckDisplayName(SelectedCompany, job.TruckId)</td>
                                 <td>@Money(job.Profit)</td>
-                                <td class="action-cell"><NavLink class="button-link" href="@($"/companies/{Segment(SelectedCompany.Id)}/jobs/{Segment(job.Id)}")">View</NavLink></td>
                             </tr>
                         }
                     </tbody>
@@ -96,7 +96,7 @@
                     <caption>Details</caption>
                     <thead><tr><th>Field</th><th>Value</th></tr></thead>
                     <tbody>
-                        <tr><td>Trailer id</td><td>@SelectedTrailer.Id</td></tr>
+                        <tr><td>License plate</td><td>@(SelectedTrailer.LicensePlate ?? "-")</td></tr>
                         <tr><td>Type</td><td>@SelectedTrailer.TrailerType</td></tr>
                     </tbody>
                 </table>
@@ -107,11 +107,11 @@
 
 @code {
     [Parameter] public string CompanyId { get; set; } = string.Empty;
-    [Parameter] public string TrailerId { get; set; } = string.Empty;
+    [Parameter] public string LicensePlate { get; set; } = string.Empty;
 
     private string _activeTab = "details";
 
     private CompanyDto? SelectedCompany => DashboardViewModel.FindCompany(Statistics, CompanyId);
-    private TrailerDto? SelectedTrailer => SelectedCompany is null ? null : DashboardViewModel.FindTrailer(SelectedCompany, TrailerId);
+    private TrailerDto? SelectedTrailer => SelectedCompany is null ? null : DashboardViewModel.FindTrailer(SelectedCompany, LicensePlate);
     private string TabClass(string tab) => _activeTab == tab ? "active" : string.Empty;
 }
