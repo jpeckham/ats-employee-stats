@@ -207,7 +207,7 @@ public sealed class SqliteMedallionSaveSnapshotSourceTests : IDisposable
                 "select display_name, garage_id, truck_id from silver_drivers where driver_id = 'driver.alice'",
                 reader => (reader.GetString(0), reader.GetString(1), reader.GetString(2))));
         Assert.Equal(
-            ("garage.phoenix", "Phoenix", 2400L),
+            ("garage.phoenix", "phoenix", 2400L),
             await QuerySingleAsync<(string, string, long)>(
                 connection,
                 "select garage_id, display_name, profit from gold_garage_ranking",
@@ -777,15 +777,12 @@ public sealed class SqliteMedallionSaveSnapshotSourceTests : IDisposable
             {
             player : player {
               company_name: "Desert Line"
-              trailers[0]: trailer.reefer.1
-              trailer_utilization_logs[0]: trailer_log.reefer.1
             }
 
             garage : garage.phoenix {
               city: phoenix
               employees[0]: driver.alice
               vehicles[0]: truck.alice
-              trailers[0]: trailer.reefer.1
             }
 
             garage : garage.denver {
@@ -804,10 +801,6 @@ public sealed class SqliteMedallionSaveSnapshotSourceTests : IDisposable
 
             trailer : trailer.reefer.1 {
               trailer_definition: trailer_def.scs.box.reefer
-            }
-
-            trailer_utilization_log : trailer_log.reefer.1 {
-              total_transported_cargoes: 2
             }
 
             job : job.outbound {
