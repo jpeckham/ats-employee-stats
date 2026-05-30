@@ -15,7 +15,9 @@ public abstract class DashboardBase : ComponentBase, IAsyncDisposable
     protected DashboardStatisticsDto? Statistics { get; private set; }
     protected DashboardProgressDto? Progress { get; private set; }
     protected string Status { get; private set; } = "Connecting...";
-    protected int RangeDays { get; private set; } = 14;
+    protected int FromDay { get; private set; } = 0;
+    protected int ToDay { get; private set; } = 0;
+    protected CollectionSortDto CollectionSort { get; private set; } = new();
 
     protected int FileProgressMax =>
         Math.Max(1, Progress?.TotalFiles ?? 1);
@@ -45,26 +47,101 @@ public abstract class DashboardBase : ComponentBase, IAsyncDisposable
         RealtimeClient.StatisticsUpdated += OnStatisticsUpdated;
         RealtimeClient.LoadingProgress += OnLoadingProgress;
         await RealtimeClient.StartAsync();
-        Statistics = await StatisticsClient.GetStatisticsAsync(RangeDays);
+        Statistics = await StatisticsClient.GetStatisticsAsync();
+        FromDay = 0;
+        ToDay = Statistics.MaxGameDay ?? 0;
         Status = "Loaded.";
     }
 
-    protected async Task SetRangeAsync(int rangeDays)
+    protected bool IsReloading { get; private set; }
+
+    protected async Task SetFromDayAsync(ChangeEventArgs e)
     {
-        RangeDays = rangeDays;
-        Status = "Loading selected range...";
-        Statistics = await StatisticsClient.GetStatisticsAsync(RangeDays);
-        Status = "Loaded.";
+        if (int.TryParse(e.Value?.ToString(), out var day))
+        {
+            FromDay = Math.Max(0, day);
+            await ReloadRangeAsync();
+        }
     }
 
-    protected string RangeClass(int rangeDays) =>
-        RangeDays == rangeDays ? "active" : string.Empty;
+    protected async Task SetToDayAsync(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var day))
+        {
+            ToDay = Math.Max(0, day);
+            await ReloadRangeAsync();
+        }
+    }
+
+    protected async Task ForceReloadAsync()
+    {
+        if (IsReloading) return;
+        IsReloading = true;
+        Status = "Reloading saves...";
+        StateHasChanged();
+        try
+        {
+            Statistics = await StatisticsClient.ReloadAsync(FromDay, ToDay > 0 ? ToDay : null, CollectionSort);
+            ToDay = Statistics.MaxGameDay ?? ToDay;
+            Status = "Reloaded.";
+        }
+        finally
+        {
+            IsReloading = false;
+            StateHasChanged();
+        }
+    }
+
+    protected async Task SetCollectionSortAsync(CollectionSortDto sort)
+    {
+        CollectionSort = sort;
+        await ReloadRangeAsync();
+    }
+
+    private async Task ReloadRangeAsync()
+    {
+        Status = "Loading...";
+        Statistics = await StatisticsClient.GetStatisticsAsync(FromDay, ToDay > 0 ? ToDay : null, CollectionSort);
+        Status = "Loaded.";
+    }
 
     protected static string Money(long value) =>
         string.Create(System.Globalization.CultureInfo.InvariantCulture, $"${value:N0}");
 
+    protected static Microsoft.AspNetCore.Components.MarkupString SparklineSvg(AtsEmployeeStats.Contracts.SparklineDto? trend)
+    {
+        if (trend is null || trend.Points.Count < 2)
+            return new Microsoft.AspNetCore.Components.MarkupString(string.Empty);
+
+        var values = trend.Points.Select(p => (double)p.Value).ToList();
+        var min = values.Min();
+        var max = values.Max();
+        var range = max - min;
+        if (range == 0) range = 1;
+
+        var count = values.Count;
+        var pointsList = values.Select((v, i) =>
+        {
+            var x = i * 80.0 / (count - 1);
+            var y = (1.0 - (v - min) / range) * 22.0 + 1.0;
+            return System.FormattableString.Invariant($"{x:F1},{y:F1}");
+        });
+
+        return new Microsoft.AspNetCore.Components.MarkupString(
+            $"<svg width=\"80\" height=\"24\" viewBox=\"0 0 80 24\" aria-hidden=\"true\">" +
+            $"<polyline points=\"{string.Join(' ', pointsList)}\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\"/>" +
+            $"</svg>");
+    }
+
     protected static string Segment(string value) =>
         Uri.EscapeDataString(value);
+
+    protected static string FormatBodyType(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return "-";
+        var parts = value.Split(['.', '_'], StringSplitOptions.RemoveEmptyEntries);
+        return string.Join(' ', parts.Select(p => char.ToUpperInvariant(p[0]) + p[1..].ToLowerInvariant()));
+    }
 
     private void OnStatusChanged(DashboardStatusDto status)
     {
@@ -75,6 +152,7 @@ public abstract class DashboardBase : ComponentBase, IAsyncDisposable
     private void OnStatisticsUpdated(DashboardStatisticsDto statistics)
     {
         Statistics = statistics;
+        ToDay = statistics.MaxGameDay ?? ToDay;
         Status = "Updated.";
         _ = InvokeAsync(StateHasChanged);
     }

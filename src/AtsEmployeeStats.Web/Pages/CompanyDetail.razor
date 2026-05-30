@@ -1,15 +1,20 @@
 @page "/companies/{CompanyId}"
+@page "/companies/{CompanyId}/{Tab}"
 @inherits AtsEmployeeStats.Web.Pages.DashboardBase
 
 <main class="dashboard-shell">
     <section class="topbar">
         <div>
             <h1>@(SelectedCompany?.DisplayName ?? "Company")</h1>
+            @if (SelectedCompany?.OwnerName is not null)
+            {
+                <p class="owner-name">@SelectedCompany.OwnerName</p>
+            }
             <p>@Status</p>
         </div>
-        <div class="range-toggle" role="group" aria-label="Time range">
-            <button class="@RangeClass(14)" @onclick="() => SetRangeAsync(14)">14 days</button>
-            <button class="@RangeClass(7)" @onclick="() => SetRangeAsync(7)">7 days</button>
+        <div class="day-range" role="group" aria-label="Game day range">
+            <label>Days <input type="number" min="0" value="@FromDay" @onchange="SetFromDayAsync" /> – <input type="number" min="0" value="@ToDay" @onchange="SetToDayAsync" /></label>
+            <button class="button-link" @onclick="ForceReloadAsync" disabled="@IsReloading">@(IsReloading ? "Reloading…" : "Reload")</button>
         </div>
     </section>
 
@@ -82,13 +87,13 @@
         </section>
 
         <nav class="tabs" aria-label="Company detail sections">
-            <button class="@TabClass("details")" @onclick="@(() => _activeTab = "details")">Details</button>
-            <button class="@TabClass("garages")" @onclick="@(() => _activeTab = "garages")">Garages</button>
-            <button class="@TabClass("drivers")" @onclick="@(() => _activeTab = "drivers")">Drivers</button>
-            <button class="@TabClass("trucks")" @onclick="@(() => _activeTab = "trucks")">Trucks</button>
-            <button class="@TabClass("trailers")" @onclick="@(() => _activeTab = "trailers")">Trailers</button>
-            <button class="@TabClass("jobs")" @onclick="@(() => _activeTab = "jobs")">Jobs</button>
-            <button class="@TabClass("cities")" @onclick="@(() => _activeTab = "cities")">Cities</button>
+            <NavLink class="@TabClass("details")" href="@($"/companies/{Segment(SelectedCompany.Id)}/details")" Match="NavLinkMatch.All">Details</NavLink>
+            <NavLink class="@TabClass("garages")" href="@($"/companies/{Segment(SelectedCompany.Id)}/garages")" Match="NavLinkMatch.All">Garages</NavLink>
+            <NavLink class="@TabClass("drivers")" href="@($"/companies/{Segment(SelectedCompany.Id)}/drivers")" Match="NavLinkMatch.All">Drivers</NavLink>
+            <NavLink class="@TabClass("trucks")" href="@($"/companies/{Segment(SelectedCompany.Id)}/trucks")" Match="NavLinkMatch.All">Trucks</NavLink>
+            <NavLink class="@TabClass("trailers")" href="@($"/companies/{Segment(SelectedCompany.Id)}/trailers")" Match="NavLinkMatch.All">Trailers</NavLink>
+            <NavLink class="@TabClass("jobs")" href="@($"/companies/{Segment(SelectedCompany.Id)}/jobs")" Match="NavLinkMatch.All">Jobs</NavLink>
+            <NavLink class="@TabClass("cities")" href="@($"/companies/{Segment(SelectedCompany.Id)}/cities")" Match="NavLinkMatch.All">Cities</NavLink>
         </nav>
 
         <section class="content-stack">
@@ -97,7 +102,11 @@
                 <table>
                     <caption>Profit Trend</caption>
                     <thead>
-                        <tr><th>Game day</th><th>Profit</th><th>Samples</th></tr>
+                        <tr>
+                            <th>Game day</th>
+                            <th>Profit</th>
+                            <th title="Number of save snapshots contributing to this day's data">Samples</th>
+                        </tr>
                     </thead>
                     <tbody>
                         @foreach (var point in SelectedCompany.ProfitTrend?.Points ?? [])
@@ -116,7 +125,16 @@
                 <table>
                     <caption>Garages</caption>
                     <thead>
-                        <tr><th>Garage</th><th>Profit</th><th>$/Day</th><th>Drivers</th><th>Trucks</th><th></th></tr>
+                        <tr>
+                            <SortableColumnHeader Column="name" ActiveColumn="@_garagesSortBy" Descending="@_garagesSortDesc" OnSort="SortGaragesAsync">Garage</SortableColumnHeader>
+                            <SortableColumnHeader Column="profit" ActiveColumn="@_garagesSortBy" Descending="@_garagesSortDesc" OnSort="SortGaragesAsync">Profit</SortableColumnHeader>
+                            <SortableColumnHeader Column="profitPerDay" ActiveColumn="@_garagesSortBy" Descending="@_garagesSortDesc" OnSort="SortGaragesAsync">Avg $/day</SortableColumnHeader>
+                            <SortableColumnHeader Column="driverCount" ActiveColumn="@_garagesSortBy" Descending="@_garagesSortDesc" OnSort="SortGaragesAsync">Drivers</SortableColumnHeader>
+                            <SortableColumnHeader Column="truckCount" ActiveColumn="@_garagesSortBy" Descending="@_garagesSortDesc" OnSort="SortGaragesAsync">Trucks</SortableColumnHeader>
+                            <SortableColumnHeader Column="trailerCount" ActiveColumn="@_garagesSortBy" Descending="@_garagesSortDesc" OnSort="SortGaragesAsync">Trailers</SortableColumnHeader>
+                            <th></th>
+                            <th></th>
+                        </tr>
                     </thead>
                     <tbody>
                         @foreach (var garage in SelectedCompany.Garages)
@@ -127,6 +145,8 @@
                                 <td>@Money(garage.ProfitPerDay)</td>
                                 <td>@garage.EmployeeCount</td>
                                 <td>@garage.TruckCount</td>
+                                <td>@garage.TrailerCount</td>
+                                <td>@SparklineSvg(garage.Trend)</td>
                                 <td class="action-cell">
                                     <NavLink class="button-link" href="@($"/companies/{Segment(SelectedCompany.Id)}/garages/{Segment(garage.Id)}")">View</NavLink>
                                 </td>
@@ -140,7 +160,15 @@
                 <table>
                     <caption>Drivers</caption>
                     <thead>
-                        <tr><th>Driver</th><th>Profit</th><th>$/Day</th><th>Truck</th><th>Jobs</th><th></th></tr>
+                        <tr>
+                            <SortableColumnHeader Column="name" ActiveColumn="@_driversSortBy" Descending="@_driversSortDesc" OnSort="SortDriversAsync">Driver</SortableColumnHeader>
+                            <SortableColumnHeader Column="profit" ActiveColumn="@_driversSortBy" Descending="@_driversSortDesc" OnSort="SortDriversAsync">Profit</SortableColumnHeader>
+                            <SortableColumnHeader Column="profitPerDay" ActiveColumn="@_driversSortBy" Descending="@_driversSortDesc" OnSort="SortDriversAsync">Avg $/day</SortableColumnHeader>
+                            <th>Truck</th>
+                            <SortableColumnHeader Column="jobCount" ActiveColumn="@_driversSortBy" Descending="@_driversSortDesc" OnSort="SortDriversAsync">Jobs</SortableColumnHeader>
+                            <th></th>
+                            <th></th>
+                        </tr>
                     </thead>
                     <tbody>
                         @foreach (var driver in SelectedCompany.Drivers)
@@ -151,6 +179,7 @@
                                 <td>@Money(driver.ProfitPerDay)</td>
                                 <td>@DashboardViewModel.GetTruckDisplayName(SelectedCompany, driver.TruckId)</td>
                                 <td>@driver.JobCount</td>
+                                <td>@SparklineSvg(driver.Trend)</td>
                                 <td class="action-cell">
                                     <NavLink class="button-link" href="@($"/companies/{Segment(SelectedCompany.Id)}/drivers/{Segment(driver.Id)}")">View</NavLink>
                                 </td>
@@ -164,7 +193,15 @@
                 <table>
                     <caption>Trucks</caption>
                     <thead>
-                        <tr><th>Truck</th><th>Profit</th><th>Garage</th><th>Driver</th><th></th></tr>
+                        <tr>
+                            <SortableColumnHeader Column="name" ActiveColumn="@_trucksSortBy" Descending="@_trucksSortDesc" OnSort="SortTrucksAsync">Truck</SortableColumnHeader>
+                            <SortableColumnHeader Column="profit" ActiveColumn="@_trucksSortBy" Descending="@_trucksSortDesc" OnSort="SortTrucksAsync">Profit</SortableColumnHeader>
+                            <SortableColumnHeader Column="profitPerDay" ActiveColumn="@_trucksSortBy" Descending="@_trucksSortDesc" OnSort="SortTrucksAsync">Avg $/day</SortableColumnHeader>
+                            <th>Garage</th>
+                            <th>Driver</th>
+                            <th></th>
+                            <th></th>
+                        </tr>
                     </thead>
                     <tbody>
                         @foreach (var truck in SelectedCompany.Trucks)
@@ -172,8 +209,10 @@
                             <tr>
                                 <td>@truck.DisplayName</td>
                                 <td>@Money(truck.Profit)</td>
-                                <td>@(truck.GarageId ?? "-")</td>
-                                <td>@(truck.DriverId ?? "-")</td>
+                                <td>@Money(truck.ProfitPerDay)</td>
+                                <td>@DashboardViewModel.GetGarageDisplayName(SelectedCompany, truck.GarageId)</td>
+                                <td>@DashboardViewModel.GetDriverDisplayName(SelectedCompany, truck.DriverId)</td>
+                                <td>@SparklineSvg(truck.Trend)</td>
                                 <td class="action-cell">
                                     <NavLink class="button-link" href="@($"/companies/{Segment(SelectedCompany.Id)}/trucks/{Segment(truck.Id)}")">View</NavLink>
                                 </td>
@@ -187,16 +226,30 @@
                 <table>
                     <caption>Trailers</caption>
                     <thead>
-                        <tr><th>Trailer</th><th>Type</th><th>Profit</th><th>Jobs</th><th></th></tr>
+                        <tr>
+                            <SortableColumnHeader Column="name" ActiveColumn="@_trailersSortBy" Descending="@_trailersSortDesc" OnSort="SortTrailersAsync">Trailer</SortableColumnHeader>
+                            <SortableColumnHeader Column="profit" ActiveColumn="@_trailersSortBy" Descending="@_trailersSortDesc" OnSort="SortTrailersAsync">Profit</SortableColumnHeader>
+                            <SortableColumnHeader Column="profitPerDay" ActiveColumn="@_trailersSortBy" Descending="@_trailersSortDesc" OnSort="SortTrailersAsync">Avg $/day</SortableColumnHeader>
+                            <SortableColumnHeader Column="jobCount" ActiveColumn="@_trailersSortBy" Descending="@_trailersSortDesc" OnSort="SortTrailersAsync">Jobs</SortableColumnHeader>
+                            <th></th>
+                            <th></th>
+                        </tr>
                     </thead>
                     <tbody>
                         @foreach (var trailer in SelectedCompany.Trailers ?? [])
                         {
                             <tr>
-                                <td>@trailer.Id</td>
-                                <td>@trailer.TrailerType</td>
+                                <td>
+                                    @FormatBodyType(trailer.BodyType ?? trailer.TrailerType)
+                                    @if (trailer.IsArticulated)
+                                    {
+                                        <span class="badge">· Double</span>
+                                    }
+                                </td>
                                 <td>@Money(trailer.Profit)</td>
+                                <td>@Money(trailer.ProfitPerDay)</td>
                                 <td>@trailer.JobCount</td>
+                                <td>@SparklineSvg(trailer.Trend)</td>
                                 <td class="action-cell">
                                     <NavLink class="button-link" href="@($"/companies/{Segment(SelectedCompany.Id)}/trailers/{Segment(trailer.Id)}")">View</NavLink>
                                 </td>
@@ -210,18 +263,43 @@
                 <table>
                     <caption>Jobs</caption>
                     <thead>
-                        <tr><th>Route</th><th>Cargo</th><th>Driver</th><th>Truck</th><th>Trailer</th><th>Profit</th><th></th></tr>
+                        <tr>
+                            <th>Route</th>
+                            <th>Cargo</th>
+                            <th>Driver</th>
+                            <th>Truck</th>
+                            <th>Trailer</th>
+                            <SortableColumnHeader Column="profit" ActiveColumn="@_missionsSortBy" Descending="@_missionsSortDesc" OnSort="SortMissionsAsync">Profit</SortableColumnHeader>
+                            <SortableColumnHeader Column="day" ActiveColumn="@_missionsSortBy" Descending="@_missionsSortDesc" OnSort="SortMissionsAsync">Day</SortableColumnHeader>
+                            <th></th>
+                        </tr>
                     </thead>
                     <tbody>
                         @foreach (var job in SelectedCompany.Missions)
                         {
                             <tr>
-                                <td>@(job.SourceCity ?? "?") -&gt; @(job.TargetCity ?? "?")</td>
+                                <td>@(job.SourceCity ?? "?") &rarr; @(job.TargetCity ?? "?")</td>
                                 <td>@(job.Cargo ?? "-")</td>
-                                <td>@(job.DriverId ?? "-")</td>
-                                <td>@DashboardViewModel.GetTruckDisplayName(SelectedCompany, job.TruckId)</td>
-                                <td>@(job.TrailerId ?? job.TrailerType ?? "-")</td>
+                                <td>@DashboardViewModel.GetDriverDisplayName(SelectedCompany, job.DriverId)</td>
+                                <td>
+                                    @if (!string.IsNullOrWhiteSpace(job.TruckId))
+                                    {
+                                        <NavLink href="@($"/companies/{Segment(SelectedCompany.Id)}/trucks/{Segment(job.TruckId)}")">@DashboardViewModel.GetTruckDisplayName(SelectedCompany, job.TruckId)</NavLink>
+                                    }
+                                    else
+                                    {
+                                        <span>-</span>
+                                    }
+                                </td>
+                                <td>
+                                    @if (!string.IsNullOrWhiteSpace(job.TrailerId))
+                                    {
+                                        var trailerBodyType = GetTrailerBodyLabel(SelectedCompany, job.TrailerId);
+                                        <NavLink href="@($"/companies/{Segment(SelectedCompany.Id)}/trailers/{Segment(job.TrailerId)}")">@trailerBodyType</NavLink>
+                                    }
+                                </td>
                                 <td>@Money(job.Profit)</td>
+                                <td>@(job.TimestampDay?.ToString() ?? "-")</td>
                                 <td class="action-cell">
                                     <NavLink class="button-link" href="@($"/companies/{Segment(SelectedCompany.Id)}/jobs/{Segment(job.Id)}")">View</NavLink>
                                 </td>
@@ -235,7 +313,17 @@
                 <table>
                     <caption>Cities</caption>
                     <thead>
-                        <tr><th>City</th><th>Garage</th><th>Eligible</th><th>Visits</th><th>Outbound</th><th>Inbound</th><th>Expansion</th><th></th></tr>
+                        <tr>
+                            <SortableColumnHeader Column="name" ActiveColumn="@_citiesSortBy" Descending="@_citiesSortDesc" OnSort="SortCitiesAsync">City</SortableColumnHeader>
+                            <th>Garage</th>
+                            <th>Eligible</th>
+                            <SortableColumnHeader Column="visitCount" ActiveColumn="@_citiesSortBy" Descending="@_citiesSortDesc" OnSort="SortCitiesAsync" title="Total trips originating from or arriving at this city">Visits</SortableColumnHeader>
+                            <SortableColumnHeader Column="outbound" ActiveColumn="@_citiesSortBy" Descending="@_citiesSortDesc" OnSort="SortCitiesAsync" title="Total profit from jobs originating FROM this city">Outbound</SortableColumnHeader>
+                            <SortableColumnHeader Column="inbound" ActiveColumn="@_citiesSortBy" Descending="@_citiesSortDesc" OnSort="SortCitiesAsync" title="Total profit from jobs delivered TO this city">Inbound</SortableColumnHeader>
+                            <SortableColumnHeader Column="total" ActiveColumn="@_citiesSortBy" Descending="@_citiesSortDesc" OnSort="SortCitiesAsync" title="Combined inbound + outbound profit">Total</SortableColumnHeader>
+                            <SortableColumnHeader Column="expansion" ActiveColumn="@_citiesSortBy" Descending="@_citiesSortDesc" OnSort="SortCitiesAsync" title="Buy-garage priority score (0 = already owned; higher = stronger candidate)">Expansion</SortableColumnHeader>
+                            <th></th>
+                        </tr>
                     </thead>
                     <tbody>
                         @foreach (var city in SelectedCompany.Cities ?? [])
@@ -247,6 +335,7 @@
                                 <td>@city.VisitCount</td>
                                 <td>@Money(city.OutboundProfit)</td>
                                 <td>@Money(city.InboundProfit)</td>
+                                <td>@Money(city.OutboundProfit + city.InboundProfit)</td>
                                 <td>@city.ExpansionScore</td>
                                 <td class="action-cell">
                                     <NavLink class="button-link" href="@($"/companies/{Segment(SelectedCompany.Id)}/cities/{Segment(city.Id)}")">View</NavLink>
@@ -264,11 +353,75 @@
     [Parameter]
     public string CompanyId { get; set; } = string.Empty;
 
+    [Parameter]
+    public string? Tab { get; set; }
+
     private string _activeTab = "details";
+
+    private string _garagesSortBy = "profit";
+    private bool _garagesSortDesc = true;
+    private string _driversSortBy = "profit";
+    private bool _driversSortDesc = true;
+    private string _trucksSortBy = "profit";
+    private bool _trucksSortDesc = true;
+    private string _trailersSortBy = "profit";
+    private bool _trailersSortDesc = true;
+    private string _missionsSortBy = "profit";
+    private bool _missionsSortDesc = true;
+    private string _citiesSortBy = "expansion";
+    private bool _citiesSortDesc = true;
+
+    protected override void OnParametersSet()
+    {
+        _activeTab = Tab ?? "details";
+    }
 
     private CompanyDto? SelectedCompany =>
         DashboardViewModel.FindCompany(Statistics, CompanyId);
 
     private string TabClass(string tab) =>
-        _activeTab == tab ? "active" : string.Empty;
+        string.Equals(_activeTab, tab, StringComparison.OrdinalIgnoreCase) ? "active" : string.Empty;
+
+    private async Task SortGaragesAsync((string Column, bool Descending) sort)
+    {
+        (_garagesSortBy, _garagesSortDesc) = sort;
+        await SetCollectionSortAsync(CollectionSort with { GaragesSortBy = _garagesSortBy, GaragesSortDir = _garagesSortDesc ? null : "asc" });
+    }
+
+    private async Task SortDriversAsync((string Column, bool Descending) sort)
+    {
+        (_driversSortBy, _driversSortDesc) = sort;
+        await SetCollectionSortAsync(CollectionSort with { DriversSortBy = _driversSortBy, DriversSortDir = _driversSortDesc ? null : "asc" });
+    }
+
+    private async Task SortTrucksAsync((string Column, bool Descending) sort)
+    {
+        (_trucksSortBy, _trucksSortDesc) = sort;
+        await SetCollectionSortAsync(CollectionSort with { TrucksSortBy = _trucksSortBy, TrucksSortDir = _trucksSortDesc ? null : "asc" });
+    }
+
+    private async Task SortTrailersAsync((string Column, bool Descending) sort)
+    {
+        (_trailersSortBy, _trailersSortDesc) = sort;
+        await SetCollectionSortAsync(CollectionSort with { TrailersSortBy = _trailersSortBy, TrailersSortDir = _trailersSortDesc ? null : "asc" });
+    }
+
+    private async Task SortMissionsAsync((string Column, bool Descending) sort)
+    {
+        (_missionsSortBy, _missionsSortDesc) = sort;
+        await SetCollectionSortAsync(CollectionSort with { MissionsSortBy = _missionsSortBy, MissionsSortDir = _missionsSortDesc ? null : "asc" });
+    }
+
+    private async Task SortCitiesAsync((string Column, bool Descending) sort)
+    {
+        (_citiesSortBy, _citiesSortDesc) = sort;
+        await SetCollectionSortAsync(CollectionSort with { CitiesSortBy = _citiesSortBy, CitiesSortDir = _citiesSortDesc ? null : "asc" });
+    }
+
+    private static string GetTrailerBodyLabel(CompanyDto company, string trailerId)
+    {
+        var trailer = DashboardViewModel.FindTrailer(company, trailerId);
+        if (trailer is null) return trailerId;
+        return FormatBodyType(trailer.BodyType ?? trailer.TrailerType);
+    }
 }
