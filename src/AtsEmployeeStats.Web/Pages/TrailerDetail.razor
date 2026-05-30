@@ -43,7 +43,7 @@
             <div><span>Type</span><strong>@SelectedTrailer.TrailerType</strong></div>
             <div><span>Profit</span><strong>@Money(SelectedTrailer.Profit)</strong></div>
             <div><span>Jobs</span><strong>@SelectedTrailer.JobCount</strong></div>
-            <div><span>Trucks</span><strong>@DashboardViewModel.GetTrailerTrucks(SelectedCompany, SelectedTrailer.Id).Count</strong></div>
+            <div><span>Trucks</span><strong>@DashboardViewModel.GetTrailerTrucks(SelectedCompany, SelectedTrailer).Count</strong></div>
         </section>
 
         <nav class="tabs" aria-label="Trailer detail sections">
@@ -60,7 +60,7 @@
                     <caption>Trucks</caption>
                     <thead><tr><th></th><th>Truck</th><th>Profit</th></tr></thead>
                     <tbody>
-                        @foreach (var truck in DashboardViewModel.GetTrailerTrucks(SelectedCompany, SelectedTrailer.Id))
+                        @foreach (var truck in DashboardViewModel.GetTrailerTrucks(SelectedCompany, SelectedTrailer))
                         {
                             <tr>
                                 <td class="action-cell"><NavLink class="button-link" href="@($"/companies/{Segment(SelectedCompany.Id)}/trucks/{Segment(truck.Id)}")">View</NavLink></td>
@@ -77,7 +77,7 @@
                     <caption>@(_activeTab == "routes" ? "Route Analytics" : "Jobs")</caption>
                     <thead><tr><th></th><th>Route</th><th>Cargo</th><th>Truck</th><th>Profit</th></tr></thead>
                     <tbody>
-                        @foreach (var job in DashboardViewModel.GetTrailerJobs(SelectedCompany, SelectedTrailer.Id))
+                        @foreach (var job in DashboardViewModel.GetTrailerJobs(SelectedCompany, SelectedTrailer))
                         {
                             <tr>
                                 <td class="action-cell"><NavLink class="button-link" href="@($"/companies/{Segment(SelectedCompany.Id)}/jobs/{Segment(job.Id)}")">View</NavLink></td>

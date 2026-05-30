@@ -88,7 +88,7 @@
                     <caption>Trailers</caption>
                     <thead><tr><th></th><th>Trailer</th><th>Type</th></tr></thead>
                     <tbody>
-                        @foreach (var trailer in (SelectedCompany.Trailers ?? []).Where(trailer => DashboardViewModel.GetTrailerJobs(SelectedCompany, trailer.Id).Any(job => job.TruckId == SelectedTruck.Id)))
+                        @foreach (var trailer in (SelectedCompany.Trailers ?? []).Where(trailer => DashboardViewModel.GetTrailerJobs(SelectedCompany, trailer).Any(job => job.TruckId == SelectedTruck.Id)))
                         {
                             <tr>
                                 <td class="action-cell"><NavLink class="button-link" href="@($"/companies/{Segment(SelectedCompany.Id)}/trailers/{Segment(trailer.Id)}")">View</NavLink></td>

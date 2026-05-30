@@ -74,11 +74,12 @@ public sealed class DashboardViewModelTests
     {
         var company = CreateCompany();
 
+        var reeferTrailer = Assert.Single(company.Trailers ?? [], t => t.Id == "trailer.reefer.1");
         Assert.Equal(["job.1"], DashboardViewModel.GetTruckJobs(company, "truck.current").Select(job => job.Id));
-        Assert.Equal(["job.1", "job.2"], DashboardViewModel.GetTrailerJobs(company, "trailer.reefer.1").Select(job => job.Id));
+        Assert.Equal(["job.1", "job.2"], DashboardViewModel.GetTrailerJobs(company, reeferTrailer).Select(job => job.Id));
         Assert.Equal(["job.1", "job.2"], DashboardViewModel.GetCityJobs(company, "phoenix").Select(job => job.Id));
         Assert.Equal(["phoenix->denver", "denver->phoenix"], DashboardViewModel.GetCityRoutes(company, "phoenix").Select(route => $"{route.OriginCityId}->{route.DestinationCityId}"));
-        Assert.Equal(["truck.current", "truck.historical"], DashboardViewModel.GetTrailerTrucks(company, "trailer.reefer.1").Select(truck => truck.Id));
+        Assert.Equal(["truck.current", "truck.historical"], DashboardViewModel.GetTrailerTrucks(company, reeferTrailer).Select(truck => truck.Id));
     }
 
     [Fact]
@@ -169,9 +170,9 @@ public sealed class DashboardViewModelTests
                 new TruckDto("truck.other", "ATS-400", 125, "garage.denver", "driver.bob")
             ],
             [
-                new MissionDto("job.1", "driver.alice", "truck.current", "reefer", "medicine", "phoenix", "denver", 3_000, TrailerId: "trailer.reefer.1", GarageId: "garage.phoenix"),
-                new MissionDto("job.2", "driver.alice", "truck.historical", "reefer", "steel", "denver", "phoenix", 1_500, TrailerId: "trailer.reefer.1", GarageId: "garage.denver"),
-                new MissionDto("job.3", "driver.bob", "truck.other", "dryvan", "paper", "denver", "vegas", 900, TrailerId: "trailer.dryvan.1", GarageId: "garage.denver")
+                new MissionDto("job.1", "driver.alice", "truck.current", "reefer", "medicine", "phoenix", "denver", 3_000, TrailerId: "trailer.reefer.1", GarageId: "garage.phoenix", TrailerLicensePlate: "200B-420 Texas"),
+                new MissionDto("job.2", "driver.alice", "truck.historical", "reefer", "steel", "denver", "phoenix", 1_500, TrailerId: "trailer.reefer.1", GarageId: "garage.denver", TrailerLicensePlate: "200B-420 Texas"),
+                new MissionDto("job.3", "driver.bob", "truck.other", "dryvan", "paper", "denver", "vegas", 900, TrailerId: "trailer.dryvan.1", GarageId: "garage.denver", TrailerLicensePlate: "425K-180 Arizona")
             ],
             [],
             [

@@ -66,7 +66,8 @@ public sealed record MissionDto(
     long Profit,
     int? TimestampDay = null,
     string? TrailerId = null,
-    string? GarageId = null);
+    string? GarageId = null,
+    string? TrailerLicensePlate = null);
 
 public sealed record DriverRecentJobDto(
     string Id,

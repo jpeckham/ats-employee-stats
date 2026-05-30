@@ -114,7 +114,8 @@ public static class StatisticsDashboardMapper
             mission.Profit,
             mission.TimestampDay,
             mission.TrailerId,
-            mission.GarageId));
+            mission.GarageId,
+            mission.TrailerLicensePlate));
 
         var cityDtos = company.Cities.Select(city => new CityDto(
             city.Id,

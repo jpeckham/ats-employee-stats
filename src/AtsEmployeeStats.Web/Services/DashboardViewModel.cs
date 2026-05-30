@@ -55,9 +55,11 @@ public static class DashboardViewModel
             .Where(mission => IdEquals(mission.TruckId, truckId))
             .ToList();
 
-    public static IReadOnlyList<MissionDto> GetTrailerJobs(CompanyDto company, string trailerId) =>
+    public static IReadOnlyList<MissionDto> GetTrailerJobs(CompanyDto company, TrailerDto trailer) =>
         company.Missions
-            .Where(mission => IdEquals(mission.TrailerId, trailerId))
+            .Where(mission => trailer.LicensePlate is not null
+                ? IdEquals(mission.TrailerLicensePlate, trailer.LicensePlate)
+                : IdEquals(mission.TrailerId, trailer.Id))
             .ToList();
 
     public static IReadOnlyList<MissionDto> GetCityJobs(CompanyDto company, string cityId) =>
@@ -70,9 +72,9 @@ public static class DashboardViewModel
             .Where(route => IdEquals(route.OriginCityId, cityId) || IdEquals(route.DestinationCityId, cityId))
             .ToList();
 
-    public static IReadOnlyList<TruckDto> GetTrailerTrucks(CompanyDto company, string trailerId)
+    public static IReadOnlyList<TruckDto> GetTrailerTrucks(CompanyDto company, TrailerDto trailer)
     {
-        var truckIds = GetTrailerJobs(company, trailerId)
+        var truckIds = GetTrailerJobs(company, trailer)
             .Where(job => !string.IsNullOrWhiteSpace(job.TruckId))
             .Select(job => job.TruckId!)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
