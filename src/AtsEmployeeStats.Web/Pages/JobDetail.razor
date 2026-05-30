@@ -7,9 +7,9 @@
             <h1>@(SelectedJob?.Cargo ?? "Job")</h1>
             <p>@Status</p>
         </div>
-        <div class="range-toggle" role="group" aria-label="Time range">
-            <button class="@RangeClass(14)" @onclick="() => SetRangeAsync(14)">14 days</button>
-            <button class="@RangeClass(7)" @onclick="() => SetRangeAsync(7)">7 days</button>
+        <div class="day-range" role="group" aria-label="Game day range">
+            <label>Days <input type="number" min="0" value="@FromDay" @onchange="SetFromDayAsync" /> – <input type="number" min="0" value="@ToDay" @onchange="SetToDayAsync" /></label>
+
         </div>
     </section>
 
@@ -77,22 +77,22 @@
             {
                 <table>
                     <caption>Assets</caption>
-                    <thead><tr><th>Type</th><th>Value</th><th></th></tr></thead>
+                    <thead><tr><th></th><th>Type</th><th>Value</th></tr></thead>
                     <tbody>
                         <tr>
+                            <td class="action-cell">@if (SelectedJob.DriverId is not null) { <NavLink class="button-link" href="@($"/companies/{Segment(SelectedCompany.Id)}/drivers/{Segment(SelectedJob.DriverId)}")">View</NavLink> }</td>
                             <td>Driver</td>
                             <td>@(SelectedJob.DriverId ?? "-")</td>
-                            <td class="action-cell">@if (SelectedJob.DriverId is not null) { <NavLink class="button-link" href="@($"/companies/{Segment(SelectedCompany.Id)}/drivers/{Segment(SelectedJob.DriverId)}")">View</NavLink> }</td>
                         </tr>
                         <tr>
+                            <td class="action-cell">@if (SelectedJob.TruckId is not null) { <NavLink class="button-link" href="@($"/companies/{Segment(SelectedCompany.Id)}/trucks/{Segment(SelectedJob.TruckId)}")">View</NavLink> }</td>
                             <td>Truck</td>
                             <td>@DashboardViewModel.GetTruckDisplayName(SelectedCompany, SelectedJob.TruckId)</td>
-                            <td class="action-cell">@if (SelectedJob.TruckId is not null) { <NavLink class="button-link" href="@($"/companies/{Segment(SelectedCompany.Id)}/trucks/{Segment(SelectedJob.TruckId)}")">View</NavLink> }</td>
                         </tr>
                         <tr>
+                            <td class="action-cell">@if (SelectedJob.TrailerId is not null) { <NavLink class="button-link" href="@($"/companies/{Segment(SelectedCompany.Id)}/trailers/{Segment(SelectedJob.TrailerId)}")">View</NavLink> }</td>
                             <td>Trailer</td>
                             <td>@(SelectedJob.TrailerId ?? SelectedJob.TrailerType ?? "-")</td>
-                            <td class="action-cell">@if (SelectedJob.TrailerId is not null) { <NavLink class="button-link" href="@($"/companies/{Segment(SelectedCompany.Id)}/trailers/{Segment(SelectedJob.TrailerId)}")">View</NavLink> }</td>
                         </tr>
                     </tbody>
                 </table>

@@ -9,7 +9,8 @@ public sealed class StatisticsService(ISaveSnapshotSource saveSnapshotSource)
 
     public async Task IngestAsync(
         CancellationToken cancellationToken,
-        IProgress<SaveLoadProgress>? progress = null)
+        IProgress<SaveLoadProgress>? progress = null,
+        bool force = false)
     {
         if (saveSnapshotSource is not IStatisticsIngestor ingestor)
             return;
@@ -17,7 +18,7 @@ public sealed class StatisticsService(ISaveSnapshotSource saveSnapshotSource)
         await _ingestionLock.WaitAsync(cancellationToken);
         try
         {
-            await ingestor.IngestAsync(cancellationToken, progress);
+            await ingestor.IngestAsync(cancellationToken, progress, force);
         }
         finally
         {

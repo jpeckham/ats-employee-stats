@@ -61,14 +61,14 @@ public sealed class ScsReferenceDataIngestionTests : IDisposable
         await using var connection = OpenTestConnection();
         await connection.OpenAsync();
         Assert.Equal(
-            ("locale/en_us/driver_names.sii", "driver_name", "driver.23", "Alice"),
-            await QuerySingleAsync<(string, string, string, string)>(
+            ("locale/en_us/driver_names.sii", "localization_db"),
+            await QuerySingleAsync<(string, string)>(
                 connection,
                 """
-                select relative_path, unit_type, unit_id, json_extract(scalar_values_json, '$.name')
+                select relative_path, unit_type
                 from bronze_reference_sii_units
                 """,
-                reader => (reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetString(3))));
+                reader => (reader.GetString(0), reader.GetString(1))));
     }
 
     [Fact]
@@ -246,9 +246,9 @@ public sealed class ScsReferenceDataIngestionTests : IDisposable
             await File.WriteAllTextAsync(Path.Combine(localeDirectory, "driver_names.sii"), """
                 SiiNunit
                 {
-                driver_name : driver.23 {
-                  name: "Alice"
-                  surname: "Ramirez"
+                localization_db : localization_db.driver_names {
+                  key[0]: "driver.23"
+                  val[0]: "Alice Ramirez"
                 }
                 }
                 """, cancellationToken);

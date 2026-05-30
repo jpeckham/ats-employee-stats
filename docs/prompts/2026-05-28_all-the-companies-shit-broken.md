@@ -1,0 +1,49 @@
+# The Coampanies screens for a specific company
+http://localhost:5087/companies/tgcitw-parnell
+- Details
+  - `Total profit` on detail header is 0. that's wrong.
+  - what are 'samples' can we get a hover over so we can know what it is
+  - tcgitw|Parnell is not the trucking company name, it's the company's owner name. display both please.
+  - head bar doesn't change with date range filter changes.
+- Garages
+  - no unique route. it shoud be `companies/:companyId/garages`
+  - `Garage` column displays an identifier, use the SCS extraction process to pull it out of the appropriate game archive so it's the friendly localized name instead.
+  - `Profit` column is all 0 so not calculating properly for game day range
+  - `$/Day` column is all zeros that's wrong it should be the average of all the days in the range.change name to `Avg $/day`
+  - missing sparkline graph: needs to show ACTUAL dollars per day for that garage
+- Drivers
+  - no unique route. it shoul dbe `companies/:companyId/drivers`3wwwwwwwww
+  - `Driver` column is the driver id not the friendly driver name. use the SCS extraction process to pull it out of the appropriate game archive so it's the friendly localized name of the driver instead
+  - `Profit` column is all 0 not calculating properly for game day range
+  - `Jobs` column is all 0 which can't be right
+  - missing sparkline graph: needs to show ACTUAL dollars per day for that Driver
+- Trucks
+  - no unique route. it shoul dbe `companies/:companyId/trucks`
+  - `profit` column is all 0 not calculating properly for game day range
+  - `garage` column is the id, use the friendly game name
+  - `driver` column is the id, use the friendly driver name
+  - need a "avg $/day" column to show average
+  - missing sparkline graph: needs to show ACTUAL dollars per day for that truck
+- Trailers
+  - make route `companies/:companyId/trailers`
+  - `Trailer` has id or some other weird content that looks like "_nameless.268.d1f6.6060". use scs friendly name
+  - show if the trailer is articulated
+  - show the trailer type (lowboy, dropdeck, dry van, reefer)
+  - `profit` column is 0 - fix that calc
+  - `jobs` column is 0 - fix that count
+  - missing "avg $/day"
+  - missing sparkline graph: show actual dollars per day.
+- Jobs
+  - make route `companies/:companyId/jobs`
+  - `Cargo` is an id. find scs archive for friendly name and use that instead
+  - `Driver` is blank. can't have a drive without a driver that makes no sense
+  - `truck` is often blank. when it's not blank it's some identifier instead of the friendly truck name+license plate thing we have going on in the Trucks tab. make the truck name a link to that specific truck's detail page
+  - `trailer` is all `unkknown`. fix that to be shown if it's the specific player trailer but if it's a job provided trailer don't show it at all. if it's a player trailer render a link that takes you to that trailers details
+- Cities
+  - `Garage` is always blank even when i definitely have a garage on it like Cheyenne
+  - `Eligible` is always blank
+  - there is no sorting on this view. it should be sorted by outbound+inbound
+  - `Total` column needs to be introduced to add together the inbound+outbound
+  - `Visits` `Expansion` `Inbound` and `Outbound` columns need hover overs or something to explain what they mean
+
+  

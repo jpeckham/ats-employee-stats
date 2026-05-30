@@ -7,9 +7,9 @@
             <h1>ATS Employee Stats</h1>
             <p>@Status</p>
         </div>
-        <div class="range-toggle" role="group" aria-label="Time range">
-            <button class="@RangeClass(14)" @onclick="() => SetRangeAsync(14)">14 days</button>
-            <button class="@RangeClass(7)" @onclick="() => SetRangeAsync(7)">7 days</button>
+        <div class="day-range" role="group" aria-label="Game day range">
+            <label>Days <input type="number" min="0" value="@FromDay" @onchange="SetFromDayAsync" /> – <input type="number" min="0" value="@ToDay" @onchange="SetToDayAsync" /></label>
+            <button class="button-link" @onclick="ForceReloadAsync" disabled="@IsReloading">@(IsReloading ? "Reloading…" : "Reload")</button>
         </div>
     </section>
 
@@ -44,26 +44,26 @@
                 <caption>Trucking Companies</caption>
                 <thead>
                     <tr>
+                        <th></th>
                         <th>Company</th>
                         <th>Profit</th>
                         <th>Garages</th>
                         <th>Drivers</th>
                         <th>Trucks</th>
-                        <th></th>
                     </tr>
                 </thead>
                 <tbody>
                     @foreach (var company in Statistics.Companies)
                     {
                         <tr>
+                            <td class="action-cell">
+                                <NavLink class="button-link" href="@($"/companies/{Segment(company.Id)}")">View</NavLink>
+                            </td>
                             <td>@company.DisplayName</td>
                             <td>@Money(company.Profit)</td>
                             <td>@company.Garages.Count</td>
                             <td>@company.Drivers.Count</td>
                             <td>@company.Trucks.Count</td>
-                            <td class="action-cell">
-                                <NavLink class="button-link" href="@($"/companies/{Segment(company.Id)}")">View</NavLink>
-                            </td>
                         </tr>
                     }
                 </tbody>

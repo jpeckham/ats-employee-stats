@@ -7,9 +7,9 @@
             <h1>@(SelectedCity?.DisplayName ?? "City")</h1>
             <p>@Status</p>
         </div>
-        <div class="range-toggle" role="group" aria-label="Time range">
-            <button class="@RangeClass(14)" @onclick="() => SetRangeAsync(14)">14 days</button>
-            <button class="@RangeClass(7)" @onclick="() => SetRangeAsync(7)">7 days</button>
+        <div class="day-range" role="group" aria-label="Game day range">
+            <label>Days <input type="number" min="0" value="@FromDay" @onchange="SetFromDayAsync" /> – <input type="number" min="0" value="@ToDay" @onchange="SetToDayAsync" /></label>
+
         </div>
     </section>
 
@@ -50,6 +50,7 @@
             <button class="@TabClass("details")" @onclick="@(() => _activeTab = "details")">Details</button>
             <button class="@TabClass("routes")" @onclick="@(() => _activeTab = "routes")">Routes</button>
             <button class="@TabClass("jobs")" @onclick="@(() => _activeTab = "jobs")">Jobs</button>
+            <button class="@TabClass("trailers")" @onclick="@(() => _activeTab = "trailers")">Trailer Types</button>
             <button class="@TabClass("profitability")" @onclick="@(() => _activeTab = "profitability")">Profitability</button>
             <button class="@TabClass("expansion")" @onclick="@(() => _activeTab = "expansion")">Expansion Potential</button>
         </nav>
@@ -59,7 +60,15 @@
             {
                 <table>
                     <caption>Routes - @SelectedCity.DisplayName</caption>
-                    <thead><tr><th>Route</th><th>Profit</th><th>Jobs</th><th>Return coverage</th></tr></thead>
+                    <thead>
+                        <tr>
+                            <th>Route</th>
+                            <SortableColumnHeader Column="profit" ActiveColumn="@_routesSortBy" Descending="@_routesSortDesc" OnSort="SortRoutesAsync">Profit</SortableColumnHeader>
+                            <SortableColumnHeader Column="jobCount" ActiveColumn="@_routesSortBy" Descending="@_routesSortDesc" OnSort="SortRoutesAsync">Jobs</SortableColumnHeader>
+                            <SortableColumnHeader Column="profitPerMile" ActiveColumn="@_routesSortBy" Descending="@_routesSortDesc" OnSort="SortRoutesAsync">$/mile</SortableColumnHeader>
+                            <SortableColumnHeader Column="returnCoverage" ActiveColumn="@_routesSortBy" Descending="@_routesSortDesc" OnSort="SortRoutesAsync">Return coverage</SortableColumnHeader>
+                        </tr>
+                    </thead>
                     <tbody>
                         @foreach (var route in DashboardViewModel.GetCityRoutes(SelectedCompany, SelectedCity.Id))
                         {
@@ -67,6 +76,7 @@
                                 <td>@route.OriginCityId -&gt; @route.DestinationCityId</td>
                                 <td>@Money(route.Profit)</td>
                                 <td>@route.JobCount</td>
+                                <td>@route.ProfitPerMile.ToString("F2")</td>
                                 <td>@route.ReturnCoverageRatio</td>
                             </tr>
                         }
@@ -77,19 +87,30 @@
             {
                 <table>
                     <caption>Jobs - @SelectedCity.DisplayName</caption>
-                    <thead><tr><th>Route</th><th>Cargo</th><th>Profit</th><th></th></tr></thead>
+                    <thead>
+                        <tr>
+                            <th></th>
+                            <th>Route</th>
+                            <th>Cargo</th>
+                            <SortableColumnHeader Column="profit" ActiveColumn="@_missionsSortBy" Descending="@_missionsSortDesc" OnSort="SortMissionsAsync">Profit</SortableColumnHeader>
+                        </tr>
+                    </thead>
                     <tbody>
                         @foreach (var job in DashboardViewModel.GetCityJobs(SelectedCompany, SelectedCity.Id))
                         {
                             <tr>
+                                <td class="action-cell"><NavLink class="button-link" href="@($"/companies/{Segment(SelectedCompany.Id)}/jobs/{Segment(job.Id)}")">View</NavLink></td>
                                 <td>@(job.SourceCity ?? "?") -&gt; @(job.TargetCity ?? "?")</td>
                                 <td>@(job.Cargo ?? "-")</td>
                                 <td>@Money(job.Profit)</td>
-                                <td class="action-cell"><NavLink class="button-link" href="@($"/companies/{Segment(SelectedCompany.Id)}/jobs/{Segment(job.Id)}")">View</NavLink></td>
                             </tr>
                         }
                     </tbody>
                 </table>
+            }
+            else if (_activeTab == "trailers")
+            {
+                <TrailerTypePieChart Items="@DashboardViewModel.GetCityTrailerTypeBreakdown(SelectedCompany, SelectedCity.Id)" />
             }
             else
             {
@@ -114,7 +135,24 @@
 
     private string _activeTab = "details";
 
+    private string _routesSortBy = "profit";
+    private bool _routesSortDesc = true;
+    private string _missionsSortBy = "profit";
+    private bool _missionsSortDesc = true;
+
     private CompanyDto? SelectedCompany => DashboardViewModel.FindCompany(Statistics, CompanyId);
     private CityDto? SelectedCity => SelectedCompany is null ? null : DashboardViewModel.FindCity(SelectedCompany, CityId);
     private string TabClass(string tab) => _activeTab == tab ? "active" : string.Empty;
+
+    private async Task SortRoutesAsync((string Column, bool Descending) sort)
+    {
+        (_routesSortBy, _routesSortDesc) = sort;
+        await SetCollectionSortAsync(CollectionSort with { RoutesSortBy = _routesSortBy, RoutesSortDir = _routesSortDesc ? null : "asc" });
+    }
+
+    private async Task SortMissionsAsync((string Column, bool Descending) sort)
+    {
+        (_missionsSortBy, _missionsSortDesc) = sort;
+        await SetCollectionSortAsync(CollectionSort with { MissionsSortBy = _missionsSortBy, MissionsSortDir = _missionsSortDesc ? null : "asc" });
+    }
 }
