@@ -42,13 +42,8 @@ public static class DashboardViewModel
 
     public static IReadOnlyList<TrailerDto> GetGarageTrailers(CompanyDto company, string garageId)
     {
-        var truckIds = GetGarageTrucks(company, garageId)
-            .Select(t => t.Id)
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
-
         var trailerIds = company.Missions
-            .Where(m => !string.IsNullOrWhiteSpace(m.TruckId) && truckIds.Contains(m.TruckId!)
-                     && !string.IsNullOrWhiteSpace(m.TrailerId))
+            .Where(m => IdEquals(m.GarageId, garageId) && !string.IsNullOrWhiteSpace(m.TrailerId))
             .Select(m => m.TrailerId!)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 

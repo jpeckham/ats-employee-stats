@@ -65,7 +65,8 @@ public sealed record MissionDto(
     string? TargetCity,
     long Profit,
     int? TimestampDay = null,
-    string? TrailerId = null);
+    string? TrailerId = null,
+    string? GarageId = null);
 
 public sealed record DriverRecentJobDto(
     string Id,

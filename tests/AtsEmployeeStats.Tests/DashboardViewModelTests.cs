@@ -118,9 +118,9 @@ public sealed class DashboardViewModelTests
         var phoenixTrailers = DashboardViewModel.GetGarageTrailers(company, "garage.phoenix");
         var denverTrailers = DashboardViewModel.GetGarageTrailers(company, "garage.denver");
 
-        // Only truck.current (phoenix) used a trailer — trailer.reefer.1 via job.1
+        // truck.current's job (job.1) at garage.phoenix used trailer.reefer.1
         Assert.Equal(["trailer.reefer.1"], phoenixTrailers.Select(t => t.Id));
-        // truck.historical used trailer.reefer.1 (job.2), truck.other used trailer.dryvan.1 (job.3)
+        // job.2 at garage.denver used trailer.reefer.1, job.3 at garage.denver used trailer.dryvan.1
         Assert.Equal(
             new[] { "trailer.dryvan.1", "trailer.reefer.1" },
             denverTrailers.Select(t => t.Id).OrderBy(x => x));
@@ -132,7 +132,7 @@ public sealed class DashboardViewModelTests
         var company = CreateCompany() with
         {
             Missions = [
-                new MissionDto("job.no-trailer", "driver.alice", "truck.current", "reefer", "food", "phoenix", "denver", 1_000)
+                new MissionDto("job.no-trailer", "driver.alice", "truck.current", "reefer", "food", "phoenix", "denver", 1_000, GarageId: "garage.phoenix")
                 // TrailerId defaults to null — this is a job-provided trailer
             ]
         };
@@ -170,9 +170,9 @@ public sealed class DashboardViewModelTests
                 new TruckDto("truck.other", "ATS-400", 125, "garage.denver", "driver.bob")
             ],
             [
-                new MissionDto("job.1", "driver.alice", "truck.current", "reefer", "medicine", "phoenix", "denver", 3_000, TrailerId: "trailer.reefer.1"),
-                new MissionDto("job.2", "driver.alice", "truck.historical", "reefer", "steel", "denver", "phoenix", 1_500, TrailerId: "trailer.reefer.1"),
-                new MissionDto("job.3", "driver.bob", "truck.other", "dryvan", "paper", "denver", "vegas", 900, TrailerId: "trailer.dryvan.1")
+                new MissionDto("job.1", "driver.alice", "truck.current", "reefer", "medicine", "phoenix", "denver", 3_000, TrailerId: "trailer.reefer.1", GarageId: "garage.phoenix"),
+                new MissionDto("job.2", "driver.alice", "truck.historical", "reefer", "steel", "denver", "phoenix", 1_500, TrailerId: "trailer.reefer.1", GarageId: "garage.denver"),
+                new MissionDto("job.3", "driver.bob", "truck.other", "dryvan", "paper", "denver", "vegas", 900, TrailerId: "trailer.dryvan.1", GarageId: "garage.denver")
             ],
             [],
             [
