@@ -142,6 +142,19 @@ public sealed class DashboardViewModelTests
         Assert.Empty(phoenixTrailers);
     }
 
+    [Fact]
+    public void GetTrailerJobs_falls_back_to_unit_id_when_trailer_has_no_license_plate()
+    {
+        var trailerNoPlate = new TrailerDto("trailer.reefer.1", "reefer", 4_500, 2); // LicensePlate = null
+        var company = CreateCompany() with
+        {
+            Trailers = [trailerNoPlate]
+        };
+        var jobs = DashboardViewModel.GetTrailerJobs(company, trailerNoPlate);
+        Assert.NotEmpty(jobs);
+        Assert.All(jobs, j => Assert.Equal("trailer.reefer.1", j.TrailerId));
+    }
+
     private static CompanyDto CreateCompany() =>
         new(
             "desert-line",

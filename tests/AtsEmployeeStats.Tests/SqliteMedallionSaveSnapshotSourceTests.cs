@@ -513,6 +513,43 @@ public sealed class SqliteMedallionSaveSnapshotSourceTests : IDisposable
         Assert.True(reader.GetInt64(1) > 0);
     }
 
+    [Fact]
+    public async Task StatisticsService_persists_trailer_pk_to_silver_jobs_and_gold_job_details()
+    {
+        await WriteAnalyticSaveAsync();
+        var source = new SqliteMedallionSaveSnapshotSource(_root, _dbPath);
+        var service = new StatisticsService(source);
+
+        await service.IngestAsync(CancellationToken.None);
+
+        using var connection = OpenTestConnection();
+        await connection.OpenAsync();
+
+        // silver_jobs should have trailer_pk set
+        await using var silverCmd = connection.CreateCommand();
+        silverCmd.CommandText = """
+            select sj.trailer_pk, st.id
+            from silver_jobs sj
+            join silver_trailers st on st.company_id = sj.company_id and st.trailer_id = sj.trailer_id
+            where sj.company_id = 'desert-line' and sj.job_id = '_nameless.job.1'
+            """;
+        await using var silverReader = await silverCmd.ExecuteReaderAsync();
+        Assert.True(await silverReader.ReadAsync());
+        Assert.Equal(silverReader.GetInt64(1), silverReader.GetInt64(0)); // trailer_pk matches silver_trailers.id
+
+        // gold_job_details should have trailer_pk and trailer_license_plate set
+        await using var goldCmd = connection.CreateCommand();
+        goldCmd.CommandText = """
+            select trailer_pk, trailer_license_plate
+            from gold_job_details
+            where company_id = 'desert-line' and job_id = '_nameless.job.1'
+            """;
+        await using var goldReader = await goldCmd.ExecuteReaderAsync();
+        Assert.True(await goldReader.ReadAsync());
+        Assert.True(goldReader.GetInt64(0) > 0);
+        Assert.Equal("200B-420 Texas", goldReader.GetString(1));
+    }
+
     public void Dispose()
     {
         if (Directory.Exists(_root))

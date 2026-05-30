@@ -412,6 +412,7 @@ public sealed class SqliteMedallionSaveSnapshotSource(
                 driver_id text,
                 truck_id text,
                 trailer_id text,
+                trailer_pk integer,
                 trailer_type text,
                 cargo text,
                 origin_city text,
@@ -544,6 +545,8 @@ public sealed class SqliteMedallionSaveSnapshotSource(
                 profit integer not null,
                 timestamp_day integer,
                 garage_id text,
+                trailer_pk integer,
+                trailer_license_plate text,
                 primary key (company_id, job_id)
             );
 
@@ -655,6 +658,9 @@ public sealed class SqliteMedallionSaveSnapshotSource(
         await EnsureColumnAsync(connection, "gold_job_details", "garage_id", "text", cancellationToken);
         await EnsureColumnAsync(connection, "silver_trailers", "garage_id", "text", cancellationToken);
         await EnsureColumnAsync(connection, "silver_trailers", "license_plate", "text", cancellationToken);
+        await EnsureColumnAsync(connection, "silver_jobs", "trailer_pk", "integer", cancellationToken);
+        await EnsureColumnAsync(connection, "gold_job_details", "trailer_pk", "integer", cancellationToken);
+        await EnsureColumnAsync(connection, "gold_job_details", "trailer_license_plate", "text", cancellationToken);
         await MigrateCompanySurrogateKeyAsync(connection, cancellationToken);
         await MigrateTrailerSchemaAsync(connection, cancellationToken);
     }
@@ -1370,16 +1376,48 @@ public sealed class SqliteMedallionSaveSnapshotSource(
                     ("$definition_path", truck.DefinitionPath));
             }
 
-            foreach (var mission in company.Missions)
+            foreach (var trailer in company.Trailers)
             {
                 await ExecuteAsync(
                     connection,
                     """
+                    insert into silver_trailers (company_id, company_pk, trailer_id, trailer_type, profit, job_count, body_type, is_articulated, garage_id, license_plate)
+                    values ($company_id, $company_pk, $trailer_id, $trailer_type, $profit, $job_count, $body_type, $is_articulated, $garage_id, $license_plate)
+                    """,
+                    cancellationToken,
+                    ("$company_id", company.Id),
+                    ("$company_pk", companyPk),
+                    ("$trailer_id", trailer.Id),
+                    ("$trailer_type", trailer.TrailerType),
+                    ("$profit", trailer.Profit),
+                    ("$job_count", trailer.JobCount),
+                    ("$body_type", trailer.BodyType),
+                    ("$is_articulated", trailer.IsArticulated ? 1 : 0),
+                    ("$garage_id", trailer.GarageId),
+                    ("$license_plate", trailer.LicensePlate));
+            }
+
+            var trailerIdToPk = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
+            await using (var trailerPkCmd = connection.CreateCommand())
+            {
+                trailerPkCmd.CommandText = "select trailer_id, id from silver_trailers where company_id = $company_id";
+                Add(trailerPkCmd, "$company_id", company.Id);
+                await using var trailerPkReader = await trailerPkCmd.ExecuteReaderAsync(cancellationToken);
+                while (await trailerPkReader.ReadAsync(cancellationToken))
+                    trailerIdToPk[trailerPkReader.GetString(0)] = trailerPkReader.GetInt64(1);
+            }
+
+            foreach (var mission in company.Missions)
+            {
+                trailerIdToPk.TryGetValue(mission.TrailerId ?? "", out var trailerPk);
+                await ExecuteAsync(
+                    connection,
+                    """
                     insert into silver_jobs (
-                        company_id, job_id, driver_id, truck_id, trailer_id, trailer_type, cargo, origin_city, destination_city, profit, timestamp_day, garage_id
+                        company_id, job_id, driver_id, truck_id, trailer_id, trailer_pk, trailer_type, cargo, origin_city, destination_city, profit, timestamp_day, garage_id
                     )
                     values (
-                        $company_id, $job_id, $driver_id, $truck_id, $trailer_id, $trailer_type, $cargo, $origin_city, $destination_city, $profit, $timestamp_day, $garage_id
+                        $company_id, $job_id, $driver_id, $truck_id, $trailer_id, $trailer_pk, $trailer_type, $cargo, $origin_city, $destination_city, $profit, $timestamp_day, $garage_id
                     )
                     """,
                     cancellationToken,
@@ -1388,6 +1426,7 @@ public sealed class SqliteMedallionSaveSnapshotSource(
                     ("$driver_id", mission.DriverId),
                     ("$truck_id", mission.TruckId),
                     ("$trailer_id", mission.TrailerId),
+                    ("$trailer_pk", trailerPk == 0 ? (object)DBNull.Value : trailerPk),
                     ("$trailer_type", mission.TrailerType),
                     ("$cargo", mission.Cargo),
                     ("$origin_city", mission.SourceCity),
@@ -1439,27 +1478,6 @@ public sealed class SqliteMedallionSaveSnapshotSource(
                     ("$trailer_type", trailerType.Id),
                     ("$profit", trailerType.Profit),
                     ("$mission_count", trailerType.MissionCount));
-            }
-
-            foreach (var trailer in company.Trailers)
-            {
-                await ExecuteAsync(
-                    connection,
-                    """
-                    insert into silver_trailers (company_id, company_pk, trailer_id, trailer_type, profit, job_count, body_type, is_articulated, garage_id, license_plate)
-                    values ($company_id, $company_pk, $trailer_id, $trailer_type, $profit, $job_count, $body_type, $is_articulated, $garage_id, $license_plate)
-                    """,
-                    cancellationToken,
-                    ("$company_id", company.Id),
-                    ("$company_pk", companyPk),
-                    ("$trailer_id", trailer.Id),
-                    ("$trailer_type", trailer.TrailerType),
-                    ("$profit", trailer.Profit),
-                    ("$job_count", trailer.JobCount),
-                    ("$body_type", trailer.BodyType),
-                    ("$is_articulated", trailer.IsArticulated ? 1 : 0),
-                    ("$garage_id", trailer.GarageId),
-                    ("$license_plate", trailer.LicensePlate));
             }
 
             foreach (var city in company.Cities)
@@ -1720,16 +1738,27 @@ public sealed class SqliteMedallionSaveSnapshotSource(
             }
         }
 
+        var goldTrailerIdToPk = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
+        await using (var trailerPkCmd = connection.CreateCommand())
+        {
+            trailerPkCmd.CommandText = "select trailer_id, id from silver_trailers where company_id = $company_id";
+            Add(trailerPkCmd, "$company_id", company.Id);
+            await using var trailerPkReader = await trailerPkCmd.ExecuteReaderAsync(cancellationToken);
+            while (await trailerPkReader.ReadAsync(cancellationToken))
+                goldTrailerIdToPk[trailerPkReader.GetString(0)] = trailerPkReader.GetInt64(1);
+        }
+
         foreach (var mission in company.Missions)
         {
+            goldTrailerIdToPk.TryGetValue(mission.TrailerId ?? "", out var trailerPk);
             await ExecuteAsync(
                 connection,
                 """
                 insert into gold_job_details (
-                    company_id, job_id, driver_id, job_type, origin_city, destination_city, cargo, trailer_type, truck_id, profit, timestamp_day, trailer_id, garage_id
+                    company_id, job_id, driver_id, job_type, origin_city, destination_city, cargo, trailer_type, truck_id, profit, timestamp_day, trailer_id, garage_id, trailer_pk, trailer_license_plate
                 )
                 values (
-                    $company_id, $job_id, $driver_id, $job_type, $origin_city, $destination_city, $cargo, $trailer_type, $truck_id, $profit, $timestamp_day, $trailer_id, $garage_id
+                    $company_id, $job_id, $driver_id, $job_type, $origin_city, $destination_city, $cargo, $trailer_type, $truck_id, $profit, $timestamp_day, $trailer_id, $garage_id, $trailer_pk, $trailer_license_plate
                 )
                 """,
                 cancellationToken,
@@ -1745,7 +1774,9 @@ public sealed class SqliteMedallionSaveSnapshotSource(
                 ("$profit", mission.Profit),
                 ("$timestamp_day", mission.TimestampDay),
                 ("$trailer_id", mission.TrailerId),
-                ("$garage_id", mission.GarageId));
+                ("$garage_id", mission.GarageId),
+                ("$trailer_pk", trailerPk == 0 ? (object)DBNull.Value : trailerPk),
+                ("$trailer_license_plate", mission.TrailerLicensePlate));
         }
 
         foreach (var group in company.RecentDriverJobs.GroupBy(job => job.DriverId, StringComparer.OrdinalIgnoreCase))
@@ -2143,7 +2174,7 @@ public sealed class SqliteMedallionSaveSnapshotSource(
         var values = new List<MissionStatistic>();
         await using var command = connection.CreateCommand();
         command.CommandText = """
-            select job_id, driver_id, truck_id, trailer_type, cargo, origin_city, destination_city, profit, timestamp_day, trailer_id, garage_id
+            select job_id, driver_id, truck_id, trailer_type, cargo, origin_city, destination_city, profit, timestamp_day, trailer_id, garage_id, trailer_license_plate
             from gold_job_details
             where company_id = $company_id
             order by profit desc, job_id
@@ -2163,7 +2194,8 @@ public sealed class SqliteMedallionSaveSnapshotSource(
                 GetNullableString(reader, 6),
                 reader.GetInt64(7),
                 GetNullableInt(reader, 8),
-                GarageId: GetNullableString(reader, 10)));
+                GarageId: GetNullableString(reader, 10),
+                TrailerLicensePlate: GetNullableString(reader, 11)));
         }
 
         return values;
