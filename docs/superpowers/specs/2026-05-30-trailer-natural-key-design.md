@@ -1,6 +1,6 @@
 # Trailer Natural Key — Design Spec
 **Date:** 2026-05-30  
-**Status:** Phase 1 ready to implement
+**Status:** Phase 1 complete ✅ | Phase 2 next
 
 ---
 
@@ -156,6 +156,25 @@ Changes:
 - Replace text `company_id` FK in `silver_drivers`, `silver_trucks`, `silver_garages`,
   `silver_jobs`, `silver_trailer_types`, `silver_cities`, `silver_routes`,
   `gold_*` tables with the integer company surrogate.
+
+---
+
+### Known Issue: Company URL slug is not a stable identity
+
+The company URL slug (e.g. `tgcitw-parnell`) is derived from `company_name` in the save file via
+`NormalizeCompanyId()`. This means:
+
+- If the player **renames their trucking company** in-game, the slug changes and all existing
+  bookmarked URLs for that company 404.
+- If a player has **multiple save files with different company names** under the same Steam profile,
+  they appear as separate companies. There is no cross-save profile identity.
+
+This is a lower-urgency problem than trailer unit_id churn (renames are rare and deliberate), but
+it is the same class of instability. A future phase should derive the company's stable identity from
+the **Steam profile ID** (already available in `bronze_save_files.profile_id`, e.g. `506C61796572`)
+rather than the company name slug. The surrogate PK added in Phase 1 is the correct foundation for
+this — once the company URL is updated to use the surrogate (or a stable profile-derived token),
+the rename problem is solved.
 
 ---
 
