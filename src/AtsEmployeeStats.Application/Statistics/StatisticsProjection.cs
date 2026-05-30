@@ -120,6 +120,13 @@ public static partial class StatisticsProjection
             .ThenBy(truck => truck.DisplayName, StringComparer.OrdinalIgnoreCase)
             .ToList();
 
+        var allUnitIdToLicensePlate = snapshots
+            .SelectMany(s => s.Document.Units.Where(u => u.TypeEquals("trailer")))
+            .Select(u => (UnitId: u.Id, LicensePlate: CleanLicensePlate(FirstKnownValue(u, "license_plate"))))
+            .Where(pair => !string.IsNullOrWhiteSpace(pair.LicensePlate))
+            .GroupBy(pair => pair.UnitId, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.First().LicensePlate!, StringComparer.OrdinalIgnoreCase);
+
         var missionStats = snapshots
             .SelectMany(BuildSnapshotMissions)
             .GroupBy(mission => mission.DeduplicationKey, StringComparer.OrdinalIgnoreCase)
@@ -138,9 +145,12 @@ public static partial class StatisticsProjection
                     .OrderBy(m => m.LastWritten)
                     .Select(m => m.Statistic.GarageId)
                     .FirstOrDefault(id => id != null);
-                return (driverId == winner.DriverId && truckId == winner.TruckId && trailerId == winner.TrailerId && garageId == winner.GarageId)
+                var trailerLicensePlate = trailerId is not null
+                    ? allUnitIdToLicensePlate.GetValueOrDefault(trailerId)
+                    : null;
+                return (driverId == winner.DriverId && truckId == winner.TruckId && trailerId == winner.TrailerId && garageId == winner.GarageId && trailerLicensePlate == winner.TrailerLicensePlate)
                     ? winner
-                    : winner with { DriverId = driverId, TruckId = truckId, TrailerId = trailerId, GarageId = garageId };
+                    : winner with { DriverId = driverId, TruckId = truckId, TrailerId = trailerId, GarageId = garageId, TrailerLicensePlate = trailerLicensePlate };
             })
             .Where(mission => mission.Profit != 0)
             .OrderByDescending(mission => mission.Profit)
@@ -162,9 +172,6 @@ public static partial class StatisticsProjection
         var routeStats = BuildRouteStats(missionStats);
         var cityStats = BuildCityStats(missionStats, garageStats, routeStats, garageEligibleCityIds);
         var individualTrailerStats = BuildTrailerStats(trailers, missionStats, trailerTypesByTrailer, unitsById, trailerToGarage, trailerToJobCount);
-        var trailerIdToLicensePlate = individualTrailerStats
-            .Where(t => !string.IsNullOrWhiteSpace(t.LicensePlate))
-            .ToDictionary(t => t.Id, t => t.LicensePlate!, StringComparer.OrdinalIgnoreCase);
         var (truckAssignments, garageAssignments) = BuildDriverAssignments(snapshots);
         return new CompanyStatistics(
             companyId,
@@ -179,7 +186,7 @@ public static partial class StatisticsProjection
             individualTrailerStats,
             cityStats,
             routeStats,
-            BuildProfitTrends(companyId, missionStats, trailerIdToLicensePlate),
+            BuildProfitTrends(companyId, missionStats),
             truckAssignments,
             garageAssignments);
     }
@@ -468,7 +475,9 @@ public static partial class StatisticsProjection
     {
         var missionProfitByTrailer = missions
             .Where(mission => !string.IsNullOrWhiteSpace(mission.TrailerId))
-            .GroupBy(mission => mission.TrailerId!, StringComparer.OrdinalIgnoreCase)
+            .GroupBy(
+                mission => mission.TrailerLicensePlate ?? mission.TrailerId!,
+                StringComparer.OrdinalIgnoreCase)
             .ToDictionary(
                 group => group.Key,
                 group => group.Sum(mission => mission.Profit),
@@ -487,10 +496,10 @@ public static partial class StatisticsProjection
                     var chainType = FirstKnownValue(trailerDef, "chain_type");
                     isArticulated = StringComparer.OrdinalIgnoreCase.Equals(chainType, "double");
                 }
-                var profit = missionProfitByTrailer.GetValueOrDefault(trailer.Id);
+                var licensePlate = CleanLicensePlate(FirstKnownValue(trailer, "license_plate"));
+                var profit = missionProfitByTrailer.GetValueOrDefault(licensePlate ?? trailer.Id);
                 var jobCount = trailerToJobCount.GetValueOrDefault(trailer.Id);
                 var garageId = trailerToGarage.GetValueOrDefault(trailer.Id);
-                var licensePlate = CleanLicensePlate(FirstKnownValue(trailer, "license_plate"));
 
                 return new TrailerStatistic(
                     trailer.Id,
@@ -625,8 +634,7 @@ public static partial class StatisticsProjection
 
     private static IReadOnlyList<TrendPointStatistic> BuildProfitTrends(
         string companyId,
-        IReadOnlyCollection<MissionStatistic> missions,
-        IReadOnlyDictionary<string, string> trailerIdToLicensePlate)
+        IReadOnlyCollection<MissionStatistic> missions)
     {
         var trends = new List<TrendPointStatistic>();
         var timedMissions = missions
@@ -645,7 +653,7 @@ public static partial class StatisticsProjection
         trends.AddRange(timedMissions
             .Where(mission => !string.IsNullOrWhiteSpace(mission.TrailerId))
             .GroupBy(
-                mission => trailerIdToLicensePlate.GetValueOrDefault(mission.TrailerId!) ?? mission.TrailerId!,
+                mission => mission.TrailerLicensePlate ?? mission.TrailerId!,
                 StringComparer.OrdinalIgnoreCase)
             .SelectMany(group => BuildTrend("trailer", group.Key, group)));
         trends.AddRange(timedMissions

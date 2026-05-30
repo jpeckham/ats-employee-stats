@@ -1020,6 +1020,103 @@ public sealed class StatisticsProjectionTests
     }
 
     [Fact]
+    public void Build_attributes_missions_from_all_snapshots_to_trailer_by_license_plate()
+    {
+        // Snapshot 1: trailer has unit_id "trailer.A" — an older save before a game reload
+        var snapshot1 = new SaveSnapshot(
+            "save-1",
+            new DateTimeOffset(2026, 5, 29, 10, 0, 0, TimeSpan.Zero),
+            SiiSaveParser.Parse("""
+                SiiNunit
+                {
+                garage : garage.phoenix {
+                  employees[0]: driver.alice
+                  trailers[0]: trailer.A
+                }
+
+                driver : driver.alice {
+                }
+
+                trailer : trailer.A {
+                  trailer_definition: trailer_def.scs.box.reefer
+                  license_plate: "200B-420|texas"
+                }
+
+                trailer_def : trailer_def.scs.box.reefer {
+                  body_type: "box"
+                  chain_type: "double"
+                }
+
+                trailer_utilization_log : trailer_log.A {
+                  total_transported_cargoes: 1
+                }
+
+                job : job.old {
+                  trailer: trailer.A
+                  income: 2000
+                  source_city: phoenix
+                  target_city: denver
+                  timestamp_day: 150
+                }
+                }
+                """));
+
+        // Snapshot 2: same physical trailer, unit_id reassigned to "trailer.B" after game reload
+        var snapshot2 = new SaveSnapshot(
+            "save-2",
+            new DateTimeOffset(2026, 5, 30, 10, 0, 0, TimeSpan.Zero),
+            SiiSaveParser.Parse("""
+                SiiNunit
+                {
+                garage : garage.phoenix {
+                  employees[0]: driver.alice
+                  trailers[0]: trailer.B
+                }
+
+                driver : driver.alice {
+                }
+
+                trailer : trailer.B {
+                  trailer_definition: trailer_def.scs.box.reefer
+                  license_plate: "200B-420|texas"
+                }
+
+                trailer_def : trailer_def.scs.box.reefer {
+                  body_type: "box"
+                  chain_type: "double"
+                }
+
+                trailer_utilization_log : trailer_log.B {
+                  total_transported_cargoes: 1
+                }
+
+                job : job.new {
+                  trailer: trailer.B
+                  income: 3000
+                  source_city: denver
+                  target_city: phoenix
+                  timestamp_day: 200
+                }
+                }
+                """));
+
+        var company = Assert.Single(StatisticsProjection.Build([snapshot1, snapshot2]).Companies);
+        var trailer = Assert.Single(company.Trailers);
+
+        // Both jobs (2000 + 3000) should be attributed to the license plate "200B-420 Texas"
+        Assert.Equal("200B-420 Texas", trailer.LicensePlate);
+        Assert.Equal(5000, trailer.Profit);
+
+        // Both missions should carry the trailer's license plate
+        Assert.All(company.Missions, m => Assert.Equal("200B-420 Texas", m.TrailerLicensePlate));
+
+        // Trend points should use "200B-420 Texas" as EntityId
+        var trailerTrends = company.ProfitTrends.Where(p => p.EntityKind == "trailer").ToList();
+        Assert.Equal(2, trailerTrends.Count);
+        Assert.All(trailerTrends, p => Assert.Equal("200B-420 Texas", p.EntityId));
+    }
+
+    [Fact]
     public void Build_extracts_license_plate_from_trailer_unit()
     {
         var snapshot = new SaveSnapshot(
