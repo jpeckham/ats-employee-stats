@@ -43,11 +43,6 @@ public static class StatisticsDashboardMapper
             .GroupBy(m => m.TrailerId!, StringComparer.OrdinalIgnoreCase)
             .ToDictionary(g => g.Key, g => g.Sum(m => m.Profit), StringComparer.OrdinalIgnoreCase);
 
-        var trailerJobCount = filteredMissions
-            .Where(m => m.TrailerId != null)
-            .GroupBy(m => m.TrailerId!, StringComparer.OrdinalIgnoreCase)
-            .ToDictionary(g => g.Key, g => g.Count(), StringComparer.OrdinalIgnoreCase);
-
         var garageProfit = filteredMissions
             .Where(m => m.GarageId != null)
             .GroupBy(m => m.GarageId!, StringComparer.OrdinalIgnoreCase)
@@ -59,13 +54,10 @@ public static class StatisticsDashboardMapper
         var displayName = nameParts[0].Trim();
         var ownerName = nameParts.Length > 1 ? nameParts[1].Trim() : (string?)null;
 
-        var garageTrailerCount = filteredMissions
-            .Where(m => m.GarageId != null && m.TrailerId != null)
-            .GroupBy(m => m.GarageId!, StringComparer.OrdinalIgnoreCase)
-            .ToDictionary(
-                g => g.Key,
-                g => g.Select(m => m.TrailerId!).Distinct(StringComparer.OrdinalIgnoreCase).Count(),
-                StringComparer.OrdinalIgnoreCase);
+        var garageTrailerCount = company.Trailers
+            .Where(t => !string.IsNullOrWhiteSpace(t.GarageId))
+            .GroupBy(t => t.GarageId!, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.Count(), StringComparer.OrdinalIgnoreCase);
 
         var garageDtos = company.Garages.Select(garage => new GarageDto(
             garage.Id,
@@ -103,11 +95,13 @@ public static class StatisticsDashboardMapper
             trailer.Id,
             trailer.TrailerType,
             trailerRangeProfit.GetValueOrDefault(trailer.Id),
-            trailerJobCount.GetValueOrDefault(trailer.Id),
+            trailer.JobCount,
             trailer.IsArticulated,
             trailer.BodyType,
             MoneyPerDay(trailerRangeProfit.GetValueOrDefault(trailer.Id), rangeDays),
-            ToSparkline(company.ProfitTrends, "trailer", trailer.Id, fromDay, toDay)));
+            ToSparkline(company.ProfitTrends, "trailer", trailer.LicensePlate ?? trailer.Id, fromDay, toDay),
+            trailer.GarageId,
+            trailer.LicensePlate));
 
         var missionDtos = filteredMissions.Select(mission => new MissionDto(
             mission.Id,

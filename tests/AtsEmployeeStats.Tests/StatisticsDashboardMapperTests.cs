@@ -128,22 +128,13 @@ public sealed class StatisticsDashboardMapperTests
                     ],
                     [],
                     [],
-                    [
-                        // Phoenix garage: two distinct player-owned trailers
-                        new MissionStatistic("job.1", null, null, "trailer.reefer.1", "reefer", null, "phoenix", "denver", 1000, GarageId: "garage.phoenix"),
-                        new MissionStatistic("job.2", null, null, "trailer.flatbed.1", "flatbed", null, "denver", "phoenix", 800, GarageId: "garage.phoenix"),
-                        // Same trailer again at phoenix — still counts as one
-                        new MissionStatistic("job.3", null, null, "trailer.reefer.1", "reefer", null, "phoenix", "tucson", 600, GarageId: "garage.phoenix"),
-                        // Job-provided trailer (TrailerId null) — must not be counted
-                        new MissionStatistic("job.4", null, null, null, "reefer", null, "phoenix", "vegas", 500, GarageId: "garage.phoenix"),
-                        // Denver garage: only one trailer
-                        new MissionStatistic("job.5", null, null, "trailer.reefer.1", "reefer", null, "denver", "phoenix", 700, GarageId: "garage.denver"),
-                    ],
+                    [],
                     [],
                     [],
                     [
-                        new TrailerStatistic("trailer.reefer.1", "reefer", 0, 0),
-                        new TrailerStatistic("trailer.flatbed.1", "flatbed", 0, 0)
+                        new TrailerStatistic("trailer.reefer.1", "reefer", 0, 5, GarageId: "garage.phoenix"),
+                        new TrailerStatistic("trailer.flatbed.1", "flatbed", 0, 3, GarageId: "garage.phoenix"),
+                        new TrailerStatistic("trailer.reefer.2", "reefer", 0, 2, GarageId: "garage.denver")
                     ],
                     [], [], [], [], [])
             ]);
@@ -177,7 +168,7 @@ public sealed class StatisticsDashboardMapperTests
                     [],
                     [],
                     [
-                        new TrailerStatistic("trailer.reefer.1", "trailer_def.scs.box.reefer", 5500, 2)
+                        new TrailerStatistic("trailer.reefer.1", "trailer_def.scs.box.reefer", 5500, 2, LicensePlate: "200B-420 Texas")
                     ],
                     [
                         new CityStatistic("phoenix", "Phoenix", true, true, 2, 3000, 2500, 5500, 0),
@@ -190,7 +181,8 @@ public sealed class StatisticsDashboardMapperTests
                     [
                         new TrendPointStatistic("company", "desert-line", 200, 3000, 1),
                         new TrendPointStatistic("company", "desert-line", 201, 2500, 1),
-                        new TrendPointStatistic("city", "phoenix", 200, 3000, 1)
+                        new TrendPointStatistic("city", "phoenix", 200, 3000, 1),
+                        new TrendPointStatistic("trailer", "200B-420 Texas", 200, 3000, 1)
                     ])
             ]);
 
@@ -206,6 +198,7 @@ public sealed class StatisticsDashboardMapperTests
         Assert.Equal("trailer_def.scs.box.reefer", trailer.TrailerType);
         Assert.Equal(5500, trailer.Profit);
         Assert.Equal(2, trailer.JobCount);
+        Assert.Equal("200B-420 Texas", trailer.LicensePlate);
 
         Assert.NotNull(company.Cities);
         Assert.Collection(

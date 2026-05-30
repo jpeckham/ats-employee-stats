@@ -94,7 +94,9 @@ public sealed record TrailerDto(
     bool IsArticulated = false,
     string? BodyType = null,
     long ProfitPerDay = 0,
-    SparklineDto? Trend = null);
+    SparklineDto? Trend = null,
+    string? GarageId = null,
+    string? LicensePlate = null);
 
 public sealed record CityDto(
     string Id,
