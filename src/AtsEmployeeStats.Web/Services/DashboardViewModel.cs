@@ -40,6 +40,23 @@ public static class DashboardViewModel
             .Where(truck => IdEquals(truck.GarageId, garageId))
             .ToList();
 
+    public static IReadOnlyList<TrailerDto> GetGarageTrailers(CompanyDto company, string garageId)
+    {
+        var truckIds = GetGarageTrucks(company, garageId)
+            .Select(t => t.Id)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        var trailerIds = company.Missions
+            .Where(m => !string.IsNullOrWhiteSpace(m.TruckId) && truckIds.Contains(m.TruckId!)
+                     && !string.IsNullOrWhiteSpace(m.TrailerId))
+            .Select(m => m.TrailerId!)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        return (company.Trailers ?? [])
+            .Where(t => trailerIds.Contains(t.Id))
+            .ToList();
+    }
+
     public static IReadOnlyList<MissionDto> GetDriverJobs(CompanyDto company, string driverId) =>
         company.Missions
             .Where(mission => IdEquals(mission.DriverId, driverId))
@@ -126,6 +143,12 @@ public static class DashboardViewModel
         return company.Trucks.FirstOrDefault(truck => IdEquals(truck.Id, truckId))?.DisplayName ?? truckId;
     }
 
+    public static string GetDriverDisplayName(CompanyDto company, string? driverId)
+    {
+        if (string.IsNullOrWhiteSpace(driverId)) return "-";
+        return company.Drivers.FirstOrDefault(d => IdEquals(d.Id, driverId))?.DisplayName ?? driverId;
+    }
+
     public static string GetGarageDisplayName(CompanyDto company, string? garageId)
     {
         if (string.IsNullOrWhiteSpace(garageId))
@@ -150,6 +173,18 @@ public static class DashboardViewModel
             .ThenBy(a => a.EffectiveFromSaveName, StringComparer.OrdinalIgnoreCase)
             .ToList();
 
+    public static IReadOnlyList<TrailerTypeProfitItem> GetCityTrailerTypeBreakdown(CompanyDto company, string cityId) =>
+        company.Missions
+            .Where(m => (IdEquals(m.SourceCity, cityId) || IdEquals(m.TargetCity, cityId))
+                        && !string.IsNullOrWhiteSpace(m.TrailerType)
+                        && !StringComparer.OrdinalIgnoreCase.Equals(m.TrailerType, "unknown"))
+            .GroupBy(m => m.TrailerType!, StringComparer.OrdinalIgnoreCase)
+            .Select(g => new TrailerTypeProfitItem(g.Key, g.Sum(m => m.Profit)))
+            .OrderByDescending(x => x.Profit)
+            .ToList();
+
     private static bool IdEquals(string? left, string? right) =>
         StringComparer.OrdinalIgnoreCase.Equals(left, right);
 }
+
+public sealed record TrailerTypeProfitItem(string TrailerType, long Profit);

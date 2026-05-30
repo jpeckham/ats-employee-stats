@@ -81,6 +81,67 @@ public sealed class DashboardViewModelTests
         Assert.Equal(["truck.current", "truck.historical"], DashboardViewModel.GetTrailerTrucks(company, "trailer.reefer.1").Select(truck => truck.Id));
     }
 
+    [Fact]
+    public void City_trailer_type_breakdown_aggregates_profit_by_type_sorted_descending()
+    {
+        var company = CreateCompany();
+
+        var breakdown = DashboardViewModel.GetCityTrailerTypeBreakdown(company, "denver");
+
+        Assert.Equal(
+            [("reefer", 4_500L), ("dryvan", 900L)],
+            breakdown.Select(x => (x.TrailerType, x.Profit)));
+    }
+
+    [Fact]
+    public void City_trailer_type_breakdown_excludes_null_and_unknown_trailer_types()
+    {
+        var company = CreateCompany() with
+        {
+            Missions = [
+                new MissionDto("job.x", "driver.alice", "truck.current", null, "food", "phoenix", "denver", 5_000),
+                new MissionDto("job.u", "driver.alice", "truck.current", "unknown", "food", "phoenix", "denver", 3_000),
+                new MissionDto("job.y", "driver.alice", "truck.current", "flatbed", "food", "phoenix", "denver", 2_000)
+            ]
+        };
+
+        var breakdown = DashboardViewModel.GetCityTrailerTypeBreakdown(company, "phoenix");
+
+        Assert.Equal([("flatbed", 2_000L)], breakdown.Select(x => (x.TrailerType, x.Profit)));
+    }
+
+    [Fact]
+    public void GetGarageTrailers_returns_only_player_owned_trailers_used_by_trucks_at_that_garage()
+    {
+        var company = CreateCompany();
+
+        var phoenixTrailers = DashboardViewModel.GetGarageTrailers(company, "garage.phoenix");
+        var denverTrailers = DashboardViewModel.GetGarageTrailers(company, "garage.denver");
+
+        // Only truck.current (phoenix) used a trailer — trailer.reefer.1 via job.1
+        Assert.Equal(["trailer.reefer.1"], phoenixTrailers.Select(t => t.Id));
+        // truck.historical used trailer.reefer.1 (job.2), truck.other used trailer.dryvan.1 (job.3)
+        Assert.Equal(
+            new[] { "trailer.dryvan.1", "trailer.reefer.1" },
+            denverTrailers.Select(t => t.Id).OrderBy(x => x));
+    }
+
+    [Fact]
+    public void GetGarageTrailers_excludes_job_provided_trailers_that_have_no_trailer_id()
+    {
+        var company = CreateCompany() with
+        {
+            Missions = [
+                new MissionDto("job.no-trailer", "driver.alice", "truck.current", "reefer", "food", "phoenix", "denver", 1_000)
+                // TrailerId defaults to null — this is a job-provided trailer
+            ]
+        };
+
+        var trailers = DashboardViewModel.GetGarageTrailers(company, "garage.phoenix");
+
+        Assert.Empty(trailers);
+    }
+
     private static CompanyDto CreateCompany() =>
         new(
             "desert-line",
