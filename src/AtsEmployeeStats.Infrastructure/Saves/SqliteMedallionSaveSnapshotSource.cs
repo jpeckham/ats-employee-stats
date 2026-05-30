@@ -367,7 +367,8 @@ public sealed class SqliteMedallionSaveSnapshotSource(
             );
 
             create table if not exists silver_companies (
-                company_id text primary key,
+                id integer primary key,
+                company_id text not null unique,
                 display_name text not null,
                 last_updated_utc text not null
             );
@@ -651,6 +652,43 @@ public sealed class SqliteMedallionSaveSnapshotSource(
         await EnsureColumnAsync(connection, "silver_jobs", "garage_id", "text", cancellationToken);
         await EnsureColumnAsync(connection, "gold_job_details", "garage_id", "text", cancellationToken);
         await EnsureColumnAsync(connection, "silver_trailers", "garage_id", "text", cancellationToken);
+        await MigrateCompanySurrogateKeyAsync(connection, cancellationToken);
+    }
+
+    private static async Task MigrateCompanySurrogateKeyAsync(
+        SqliteConnection connection,
+        CancellationToken cancellationToken)
+    {
+        await using var check = connection.CreateCommand();
+        check.CommandText = "pragma table_info(silver_companies)";
+        await using var reader = await check.ExecuteReaderAsync(cancellationToken);
+        var hasIdColumn = false;
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            if (string.Equals(reader.GetString(1), "id", StringComparison.OrdinalIgnoreCase))
+            {
+                hasIdColumn = true;
+                break;
+            }
+        }
+
+        if (hasIdColumn)
+        {
+            return;
+        }
+
+        await ExecuteAsync(connection, "drop table if exists silver_companies", cancellationToken);
+        await ExecuteAsync(
+            connection,
+            """
+            create table silver_companies (
+                id integer primary key,
+                company_id text not null unique,
+                display_name text not null,
+                last_updated_utc text not null
+            )
+            """,
+            cancellationToken);
     }
 
     private static async Task EnsureColumnAsync(
