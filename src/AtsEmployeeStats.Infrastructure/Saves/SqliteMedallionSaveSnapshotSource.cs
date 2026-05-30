@@ -165,7 +165,8 @@ public sealed class SqliteMedallionSaveSnapshotSource(
 
     public async Task IngestAsync(
         CancellationToken cancellationToken,
-        IProgress<SaveLoadProgress>? progress = null)
+        IProgress<SaveLoadProgress>? progress = null,
+        bool force = false)
     {
         await using var connection = await OpenDatabaseAsync(cancellationToken);
         await EnsureSchemaAsync(connection, cancellationToken);
@@ -267,7 +268,7 @@ public sealed class SqliteMedallionSaveSnapshotSource(
         }
 
         var goldHasData = await GoldHasDataAsync(connection, cancellationToken);
-        if (anyIngested || !goldHasData)
+        if (anyIngested || !goldHasData || force)
         {
             var allSnapshots = await ReadAllBronzeSnapshotsAsync(connection, cancellationToken);
             var statistics = StatisticsProjection.Build(allSnapshots);
@@ -416,6 +417,7 @@ public sealed class SqliteMedallionSaveSnapshotSource(
                 destination_city text,
                 profit integer not null,
                 timestamp_day integer,
+                garage_id text,
                 primary key (company_id, job_id)
             );
 
@@ -538,6 +540,7 @@ public sealed class SqliteMedallionSaveSnapshotSource(
                 truck_id text,
                 profit integer not null,
                 timestamp_day integer,
+                garage_id text,
                 primary key (company_id, job_id)
             );
 
@@ -642,6 +645,12 @@ public sealed class SqliteMedallionSaveSnapshotSource(
         await EnsureColumnAsync(connection, "silver_trucks", "definition_path", "text", cancellationToken);
         await EnsureColumnAsync(connection, "silver_jobs", "timestamp_day", "integer", cancellationToken);
         await EnsureColumnAsync(connection, "gold_job_details", "timestamp_day", "integer", cancellationToken);
+        await EnsureColumnAsync(connection, "gold_job_details", "trailer_id", "text", cancellationToken);
+        await EnsureColumnAsync(connection, "silver_trailers", "body_type", "text", cancellationToken);
+        await EnsureColumnAsync(connection, "silver_trailers", "is_articulated", "integer", cancellationToken);
+        await EnsureColumnAsync(connection, "silver_jobs", "garage_id", "text", cancellationToken);
+        await EnsureColumnAsync(connection, "gold_job_details", "garage_id", "text", cancellationToken);
+        await EnsureColumnAsync(connection, "silver_trailers", "garage_id", "text", cancellationToken);
     }
 
     private static async Task EnsureColumnAsync(
@@ -957,13 +966,16 @@ public sealed class SqliteMedallionSaveSnapshotSource(
             cancellationToken,
             ("$archive_id", extracted.ArchiveHash));
 
-        foreach (var path in Directory.EnumerateFiles(extracted.OutputDirectory, "driver_names.sii", SearchOption.AllDirectories))
+        foreach (var fileName in new[] { "driver_names.sii", "local.sii" })
         {
-            var relativePath = Path.GetRelativePath(extracted.OutputDirectory, path)
-                .Replace(Path.DirectorySeparatorChar, '/')
-                .Replace(Path.AltDirectorySeparatorChar, '/');
-            var document = SiiSaveParser.Parse(await File.ReadAllTextAsync(path, cancellationToken));
-            await InsertReferenceUnitsAsync(connection, extracted.ArchiveHash, relativePath, document, cancellationToken);
+            foreach (var path in Directory.EnumerateFiles(extracted.OutputDirectory, fileName, SearchOption.AllDirectories))
+            {
+                var relativePath = Path.GetRelativePath(extracted.OutputDirectory, path)
+                    .Replace(Path.DirectorySeparatorChar, '/')
+                    .Replace(Path.AltDirectorySeparatorChar, '/');
+                var document = SiiSaveParser.Parse(await File.ReadAllTextAsync(path, cancellationToken));
+                await InsertReferenceUnitsAsync(connection, extracted.ArchiveHash, relativePath, document, cancellationToken);
+            }
         }
 
         await transaction.CommitAsync(cancellationToken);
@@ -1271,10 +1283,10 @@ public sealed class SqliteMedallionSaveSnapshotSource(
                     connection,
                     """
                     insert into silver_jobs (
-                        company_id, job_id, driver_id, truck_id, trailer_id, trailer_type, cargo, origin_city, destination_city, profit, timestamp_day
+                        company_id, job_id, driver_id, truck_id, trailer_id, trailer_type, cargo, origin_city, destination_city, profit, timestamp_day, garage_id
                     )
                     values (
-                        $company_id, $job_id, $driver_id, $truck_id, $trailer_id, $trailer_type, $cargo, $origin_city, $destination_city, $profit, $timestamp_day
+                        $company_id, $job_id, $driver_id, $truck_id, $trailer_id, $trailer_type, $cargo, $origin_city, $destination_city, $profit, $timestamp_day, $garage_id
                     )
                     """,
                     cancellationToken,
@@ -1288,7 +1300,8 @@ public sealed class SqliteMedallionSaveSnapshotSource(
                     ("$origin_city", mission.SourceCity),
                     ("$destination_city", mission.TargetCity),
                     ("$profit", mission.Profit),
-                    ("$timestamp_day", mission.TimestampDay));
+                    ("$timestamp_day", mission.TimestampDay),
+                    ("$garage_id", mission.GarageId));
             }
 
             foreach (var job in company.RecentDriverJobs)
@@ -1340,15 +1353,18 @@ public sealed class SqliteMedallionSaveSnapshotSource(
                 await ExecuteAsync(
                     connection,
                     """
-                    insert into silver_trailers (company_id, trailer_id, trailer_type, profit, job_count)
-                    values ($company_id, $trailer_id, $trailer_type, $profit, $job_count)
+                    insert into silver_trailers (company_id, trailer_id, trailer_type, profit, job_count, body_type, is_articulated, garage_id)
+                    values ($company_id, $trailer_id, $trailer_type, $profit, $job_count, $body_type, $is_articulated, $garage_id)
                     """,
                     cancellationToken,
                     ("$company_id", company.Id),
                     ("$trailer_id", trailer.Id),
                     ("$trailer_type", trailer.TrailerType),
                     ("$profit", trailer.Profit),
-                    ("$job_count", trailer.JobCount));
+                    ("$job_count", trailer.JobCount),
+                    ("$body_type", trailer.BodyType),
+                    ("$is_articulated", trailer.IsArticulated ? 1 : 0),
+                    ("$garage_id", trailer.GarageId));
             }
 
             foreach (var city in company.Cities)
@@ -1402,6 +1418,7 @@ public sealed class SqliteMedallionSaveSnapshotSource(
 
             await ApplyReferenceDriverNamesAsync(connection, cancellationToken);
             await PersistGoldAsync(connection, company, cancellationToken);
+            await ApplyReferenceCargoNamesAsync(connection, cancellationToken);
         }
 
         await transaction.CommitAsync(cancellationToken);
@@ -1411,22 +1428,101 @@ public sealed class SqliteMedallionSaveSnapshotSource(
         SqliteConnection connection,
         CancellationToken cancellationToken)
     {
+        var locale = await LoadLocaleAsync(connection, "%driver_names%", cancellationToken);
+        if (locale.Count == 0) return;
+
+        await using var updateCmd = connection.CreateCommand();
+        updateCmd.CommandText = "update silver_drivers set display_name = $display_name where driver_id = $driver_id";
+        var driverParam = updateCmd.Parameters.Add("$driver_id", Microsoft.Data.Sqlite.SqliteType.Text);
+        var nameParam = updateCmd.Parameters.Add("$display_name", Microsoft.Data.Sqlite.SqliteType.Text);
+
+        List<string> driverIds;
+        await using (var selectCmd = connection.CreateCommand())
+        {
+            selectCmd.CommandText = "select distinct driver_id from silver_drivers";
+            await using var reader = await selectCmd.ExecuteReaderAsync(cancellationToken);
+            driverIds = [];
+            while (await reader.ReadAsync(cancellationToken))
+                driverIds.Add(reader.GetString(0));
+        }
+
+        foreach (var driverId in driverIds)
+        {
+            if (locale.TryGetValue(driverId, out var name) && !string.IsNullOrWhiteSpace(name))
+            {
+                driverParam.Value = driverId;
+                nameParam.Value = name;
+                await updateCmd.ExecuteNonQueryAsync(cancellationToken);
+            }
+        }
+    }
+
+    private static async Task ApplyReferenceCargoNamesAsync(
+        SqliteConnection connection,
+        CancellationToken cancellationToken)
+    {
+        var locale = await LoadLocaleAsync(connection, "%local.sii%", cancellationToken);
+        if (locale.Count == 0) return;
+
+        foreach (var tableName in new[] { "silver_jobs", "gold_job_details" })
+        {
+            List<string> cargoIds;
+            await using (var selectCmd = connection.CreateCommand())
+            {
+                selectCmd.CommandText = $"select distinct cargo from {tableName} where cargo is not null";
+                await using var reader = await selectCmd.ExecuteReaderAsync(cancellationToken);
+                cargoIds = [];
+                while (await reader.ReadAsync(cancellationToken))
+                    cargoIds.Add(reader.GetString(0));
+            }
+
+            await using var updateCmd = connection.CreateCommand();
+            updateCmd.CommandText = $"update {tableName} set cargo = $display_name where cargo = $cargo_id";
+            var cargoParam = updateCmd.Parameters.Add("$cargo_id", Microsoft.Data.Sqlite.SqliteType.Text);
+            var nameParam = updateCmd.Parameters.Add("$display_name", Microsoft.Data.Sqlite.SqliteType.Text);
+
+            foreach (var cargoId in cargoIds)
+            {
+                if (locale.TryGetValue("cn_" + cargoId, out var name) && !string.IsNullOrWhiteSpace(name))
+                {
+                    cargoParam.Value = cargoId;
+                    nameParam.Value = name;
+                    await updateCmd.ExecuteNonQueryAsync(cancellationToken);
+                }
+            }
+        }
+    }
+
+    private static async Task<Dictionary<string, string>> LoadLocaleAsync(
+        SqliteConnection connection,
+        string pathPattern,
+        CancellationToken cancellationToken)
+    {
+        var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         await using var command = connection.CreateCommand();
         command.CommandText = """
-            update silver_drivers
-            set display_name = trim(
-                coalesce(json_extract(ref.scalar_values_json, '$.name'), '') || ' ' ||
-                coalesce(json_extract(ref.scalar_values_json, '$.surname'), '')
-            )
-            from bronze_reference_sii_units ref
-            where ref.unit_id = silver_drivers.driver_id
-              and ref.unit_type in ('driver_name', 'driver')
-              and trim(
-                    coalesce(json_extract(ref.scalar_values_json, '$.name'), '') || ' ' ||
-                    coalesce(json_extract(ref.scalar_values_json, '$.surname'), '')
-                  ) <> ''
+            select array_values_json
+            from bronze_reference_sii_units
+            where unit_type = 'localization_db'
+              and relative_path like $path_pattern
             """;
-        await command.ExecuteNonQueryAsync(cancellationToken);
+        Add(command, "$path_pattern", pathPattern);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            var json = reader.GetString(0);
+            if (string.IsNullOrWhiteSpace(json)) continue;
+            var arrays = JsonSerializer.Deserialize<Dictionary<string, List<string>>>(json, JsonOptions);
+            if (arrays is null) continue;
+            if (!arrays.TryGetValue("key", out var keys) || !arrays.TryGetValue("val", out var vals)) continue;
+            var count = Math.Min(keys.Count, vals.Count);
+            for (var i = 0; i < count; i++)
+            {
+                if (!string.IsNullOrWhiteSpace(keys[i]) && !string.IsNullOrWhiteSpace(vals[i]))
+                    result.TryAdd(keys[i], vals[i]);
+            }
+        }
+        return result;
     }
 
     private static async Task PersistGoldAsync(
@@ -1535,10 +1631,10 @@ public sealed class SqliteMedallionSaveSnapshotSource(
                 connection,
                 """
                 insert into gold_job_details (
-                    company_id, job_id, driver_id, job_type, origin_city, destination_city, cargo, trailer_type, truck_id, profit, timestamp_day
+                    company_id, job_id, driver_id, job_type, origin_city, destination_city, cargo, trailer_type, truck_id, profit, timestamp_day, trailer_id, garage_id
                 )
                 values (
-                    $company_id, $job_id, $driver_id, $job_type, $origin_city, $destination_city, $cargo, $trailer_type, $truck_id, $profit, $timestamp_day
+                    $company_id, $job_id, $driver_id, $job_type, $origin_city, $destination_city, $cargo, $trailer_type, $truck_id, $profit, $timestamp_day, $trailer_id, $garage_id
                 )
                 """,
                 cancellationToken,
@@ -1552,7 +1648,9 @@ public sealed class SqliteMedallionSaveSnapshotSource(
                 ("$trailer_type", mission.TrailerType),
                 ("$truck_id", mission.TruckId),
                 ("$profit", mission.Profit),
-                ("$timestamp_day", mission.TimestampDay));
+                ("$timestamp_day", mission.TimestampDay),
+                ("$trailer_id", mission.TrailerId),
+                ("$garage_id", mission.GarageId));
         }
 
         foreach (var group in company.RecentDriverJobs.GroupBy(job => job.DriverId, StringComparer.OrdinalIgnoreCase))
@@ -1950,7 +2048,7 @@ public sealed class SqliteMedallionSaveSnapshotSource(
         var values = new List<MissionStatistic>();
         await using var command = connection.CreateCommand();
         command.CommandText = """
-            select job_id, driver_id, truck_id, trailer_type, cargo, origin_city, destination_city, profit, timestamp_day
+            select job_id, driver_id, truck_id, trailer_type, cargo, origin_city, destination_city, profit, timestamp_day, trailer_id, garage_id
             from gold_job_details
             where company_id = $company_id
             order by profit desc, job_id
@@ -1963,13 +2061,14 @@ public sealed class SqliteMedallionSaveSnapshotSource(
                 reader.GetString(0),
                 GetNullableString(reader, 1),
                 GetNullableString(reader, 2),
-                TrailerId: null,
+                TrailerId: GetNullableString(reader, 9),
                 GetNullableString(reader, 3),
                 GetNullableString(reader, 4),
                 GetNullableString(reader, 5),
                 GetNullableString(reader, 6),
                 reader.GetInt64(7),
-                GetNullableInt(reader, 8)));
+                GetNullableInt(reader, 8),
+                GarageId: GetNullableString(reader, 10)));
         }
 
         return values;
@@ -2059,7 +2158,7 @@ public sealed class SqliteMedallionSaveSnapshotSource(
         var values = new List<TrailerStatistic>();
         await using var command = connection.CreateCommand();
         command.CommandText = """
-            select trailer_id, trailer_type, profit, job_count
+            select trailer_id, trailer_type, profit, job_count, body_type, is_articulated, garage_id
             from silver_trailers
             where company_id = $company_id
             order by profit desc, trailer_id
@@ -2072,7 +2171,10 @@ public sealed class SqliteMedallionSaveSnapshotSource(
                 reader.GetString(0),
                 reader.GetString(1),
                 reader.GetInt64(2),
-                reader.GetInt32(3)));
+                reader.GetInt32(3),
+                IsArticulated: reader.IsDBNull(5) ? false : reader.GetInt32(5) != 0,
+                BodyType: GetNullableString(reader, 4),
+                GarageId: GetNullableString(reader, 6)));
         }
 
         return values;
