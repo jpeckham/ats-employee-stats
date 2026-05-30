@@ -56,37 +56,38 @@ public partial class Program
             new DashboardConfigDto(options.Value.SaveRoot, options.Value.HistoryDays));
 
         app.MapGet("/api/statistics", async (
-            int? rangeDays,
+            int? fromDay,
+            int? toDay,
+            [AsParameters] CollectionSortDto sort,
             StatisticsService service,
-            IOptions<StatisticsApiOptions> options,
             IHubContext<StatisticsHub> hub,
             CancellationToken cancellationToken) =>
         {
             var progress = BuildSignalRProgress(hub, cancellationToken);
             var statistics = await service.LoadAsync(cancellationToken, progress);
-            return StatisticsDashboardMapper.ToDashboardDto(statistics, rangeDays ?? options.Value.HistoryDays);
+            return StatisticsDashboardMapper.ToDashboardDto(statistics, fromDay ?? 0, toDay, sort);
         });
 
         app.MapGet("/api/companies", async (
-            int? rangeDays,
+            int? fromDay,
+            int? toDay,
             StatisticsService service,
-            IOptions<StatisticsApiOptions> options,
             IHubContext<StatisticsHub> hub,
             CancellationToken cancellationToken) =>
         {
-            var dto = await LoadDashboardAsync(rangeDays, service, options, hub, cancellationToken);
+            var dto = await LoadDashboardAsync(fromDay, toDay, service, hub, cancellationToken);
             return Results.Ok(dto.Companies);
         });
 
         app.MapGet("/api/companies/{companyId}", async (
             string companyId,
-            int? rangeDays,
+            int? fromDay,
+            int? toDay,
             StatisticsService service,
-            IOptions<StatisticsApiOptions> options,
             IHubContext<StatisticsHub> hub,
             CancellationToken cancellationToken) =>
         {
-            var dto = await LoadDashboardAsync(rangeDays, service, options, hub, cancellationToken);
+            var dto = await LoadDashboardAsync(fromDay, toDay, service, hub, cancellationToken);
             var company = FindCompany(dto, companyId);
             return company is null ? Results.NotFound() : Results.Ok(company);
         });
@@ -94,13 +95,13 @@ public partial class Program
         app.MapGet("/api/companies/{companyId}/drivers/{driverId}", async (
             string companyId,
             string driverId,
-            int? rangeDays,
+            int? fromDay,
+            int? toDay,
             StatisticsService service,
-            IOptions<StatisticsApiOptions> options,
             IHubContext<StatisticsHub> hub,
             CancellationToken cancellationToken) =>
         {
-            var company = FindCompany(await LoadDashboardAsync(rangeDays, service, options, hub, cancellationToken), companyId);
+            var company = FindCompany(await LoadDashboardAsync(fromDay, toDay, service, hub, cancellationToken), companyId);
             var driver = company?.Drivers.FirstOrDefault(driver => IdEquals(driver.Id, driverId));
             return driver is null ? Results.NotFound() : Results.Ok(driver);
         });
@@ -108,13 +109,13 @@ public partial class Program
         app.MapGet("/api/companies/{companyId}/garages/{garageId}", async (
             string companyId,
             string garageId,
-            int? rangeDays,
+            int? fromDay,
+            int? toDay,
             StatisticsService service,
-            IOptions<StatisticsApiOptions> options,
             IHubContext<StatisticsHub> hub,
             CancellationToken cancellationToken) =>
         {
-            var company = FindCompany(await LoadDashboardAsync(rangeDays, service, options, hub, cancellationToken), companyId);
+            var company = FindCompany(await LoadDashboardAsync(fromDay, toDay, service, hub, cancellationToken), companyId);
             var garage = company?.Garages.FirstOrDefault(garage => IdEquals(garage.Id, garageId));
             return garage is null ? Results.NotFound() : Results.Ok(garage);
         });
@@ -122,41 +123,41 @@ public partial class Program
         app.MapGet("/api/companies/{companyId}/trucks/{truckId}", async (
             string companyId,
             string truckId,
-            int? rangeDays,
+            int? fromDay,
+            int? toDay,
             StatisticsService service,
-            IOptions<StatisticsApiOptions> options,
             IHubContext<StatisticsHub> hub,
             CancellationToken cancellationToken) =>
         {
-            var company = FindCompany(await LoadDashboardAsync(rangeDays, service, options, hub, cancellationToken), companyId);
+            var company = FindCompany(await LoadDashboardAsync(fromDay, toDay, service, hub, cancellationToken), companyId);
             var truck = company?.Trucks.FirstOrDefault(truck => IdEquals(truck.Id, truckId));
             return truck is null ? Results.NotFound() : Results.Ok(truck);
         });
 
-        app.MapGet("/api/companies/{companyId}/trailers/{trailerId}", async (
+        app.MapGet("/api/companies/{companyId}/trailers/{licensePlate}", async (
             string companyId,
-            string trailerId,
-            int? rangeDays,
+            string licensePlate,
+            int? fromDay,
+            int? toDay,
             StatisticsService service,
-            IOptions<StatisticsApiOptions> options,
             IHubContext<StatisticsHub> hub,
             CancellationToken cancellationToken) =>
         {
-            var company = FindCompany(await LoadDashboardAsync(rangeDays, service, options, hub, cancellationToken), companyId);
-            var trailer = company?.Trailers?.FirstOrDefault(trailer => IdEquals(trailer.Id, trailerId));
+            var company = FindCompany(await LoadDashboardAsync(fromDay, toDay, service, hub, cancellationToken), companyId);
+            var trailer = company?.Trailers?.FirstOrDefault(trailer => IdEquals(trailer.LicensePlate, licensePlate));
             return trailer is null ? Results.NotFound() : Results.Ok(trailer);
         });
 
         app.MapGet("/api/companies/{companyId}/jobs/{jobId}", async (
             string companyId,
             string jobId,
-            int? rangeDays,
+            int? fromDay,
+            int? toDay,
             StatisticsService service,
-            IOptions<StatisticsApiOptions> options,
             IHubContext<StatisticsHub> hub,
             CancellationToken cancellationToken) =>
         {
-            var company = FindCompany(await LoadDashboardAsync(rangeDays, service, options, hub, cancellationToken), companyId);
+            var company = FindCompany(await LoadDashboardAsync(fromDay, toDay, service, hub, cancellationToken), companyId);
             var job = company?.Missions.FirstOrDefault(job => IdEquals(job.Id, jobId));
             return job is null ? Results.NotFound() : Results.Ok(job);
         });
@@ -164,13 +165,13 @@ public partial class Program
         app.MapGet("/api/companies/{companyId}/cities/{cityId}", async (
             string companyId,
             string cityId,
-            int? rangeDays,
+            int? fromDay,
+            int? toDay,
             StatisticsService service,
-            IOptions<StatisticsApiOptions> options,
             IHubContext<StatisticsHub> hub,
             CancellationToken cancellationToken) =>
         {
-            var company = FindCompany(await LoadDashboardAsync(rangeDays, service, options, hub, cancellationToken), companyId);
+            var company = FindCompany(await LoadDashboardAsync(fromDay, toDay, service, hub, cancellationToken), companyId);
             var city = company?.Cities?.FirstOrDefault(city => IdEquals(city.Id, cityId));
             return city is null ? Results.NotFound() : Results.Ok(city);
         });
@@ -179,13 +180,13 @@ public partial class Program
             string companyId,
             string originCityId,
             string destinationCityId,
-            int? rangeDays,
+            int? fromDay,
+            int? toDay,
             StatisticsService service,
-            IOptions<StatisticsApiOptions> options,
             IHubContext<StatisticsHub> hub,
             CancellationToken cancellationToken) =>
         {
-            var company = FindCompany(await LoadDashboardAsync(rangeDays, service, options, hub, cancellationToken), companyId);
+            var company = FindCompany(await LoadDashboardAsync(fromDay, toDay, service, hub, cancellationToken), companyId);
             var route = company?.Routes?.FirstOrDefault(route =>
                 IdEquals(route.OriginCityId, originCityId) &&
                 IdEquals(route.DestinationCityId, destinationCityId));
@@ -193,9 +194,10 @@ public partial class Program
         });
 
         app.MapPost("/api/statistics/reload", async (
-            int? rangeDays,
+            int? fromDay,
+            int? toDay,
+            [AsParameters] CollectionSortDto sort,
             StatisticsService service,
-            IOptions<StatisticsApiOptions> options,
             IHubContext<StatisticsHub> hub,
             CancellationToken cancellationToken) =>
         {
@@ -204,9 +206,9 @@ public partial class Program
                 new DashboardStatusDto("Reloading saves...", IsError: false),
                 cancellationToken);
             var progress = BuildSignalRProgress(hub, cancellationToken);
-            await service.IngestAsync(cancellationToken, progress);
+            await service.IngestAsync(cancellationToken, progress, force: true);
             var statistics = await service.LoadAsync(cancellationToken, progress);
-            var dto = StatisticsDashboardMapper.ToDashboardDto(statistics, rangeDays ?? options.Value.HistoryDays);
+            var dto = StatisticsDashboardMapper.ToDashboardDto(statistics, fromDay ?? 0, toDay, sort);
             await hub.Clients.All.SendAsync("StatisticsUpdated", dto, cancellationToken);
             return Results.Ok(dto);
         });
@@ -229,15 +231,16 @@ public partial class Program
         });
 
     private static async Task<DashboardStatisticsDto> LoadDashboardAsync(
-        int? rangeDays,
+        int? fromDay,
+        int? toDay,
         StatisticsService service,
-        IOptions<StatisticsApiOptions> options,
         IHubContext<StatisticsHub> hub,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        CollectionSortDto? sort = null)
     {
         var progress = BuildSignalRProgress(hub, cancellationToken);
         var statistics = await service.LoadAsync(cancellationToken, progress);
-        return StatisticsDashboardMapper.ToDashboardDto(statistics, rangeDays ?? options.Value.HistoryDays);
+        return StatisticsDashboardMapper.ToDashboardDto(statistics, fromDay ?? 0, toDay, sort);
     }
 
     private static CompanyDto? FindCompany(DashboardStatisticsDto statistics, string companyId) =>
