@@ -487,6 +487,7 @@ public static partial class StatisticsProjection
                 var profit = missionProfitByTrailer.GetValueOrDefault(trailer.Id);
                 var jobCount = trailerToJobCount.GetValueOrDefault(trailer.Id);
                 var garageId = trailerToGarage.GetValueOrDefault(trailer.Id);
+                var licensePlate = CleanLicensePlate(FirstKnownValue(trailer, "license_plate"));
 
                 return new TrailerStatistic(
                     trailer.Id,
@@ -495,7 +496,8 @@ public static partial class StatisticsProjection
                     jobCount,
                     isArticulated,
                     bodyType,
-                    garageId);
+                    garageId,
+                    licensePlate);
             })
             .Where(trailer => trailer.JobCount > 0 || !StringComparer.OrdinalIgnoreCase.Equals(trailer.TrailerType, "unknown"))
             .OrderByDescending(trailer => trailer.Profit)

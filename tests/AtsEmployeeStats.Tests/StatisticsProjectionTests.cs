@@ -57,7 +57,7 @@ public sealed class StatisticsProjectionTests
 
         var garage = Assert.Single(company.Garages);
         Assert.Equal("garage.phoenix", garage.Id);
-        Assert.Equal("phoenix", garage.DisplayName);
+        Assert.Equal("Phoenix", garage.DisplayName);
         Assert.Equal(1400, garage.Profit);
         Assert.Equal(1, garage.EmployeeCount);
         Assert.Equal(1, garage.TruckCount);
@@ -313,6 +313,77 @@ public sealed class StatisticsProjectionTests
                 Assert.Null(assignment.EffectiveToSaveName);
                 Assert.True(assignment.IsCurrent);
             });
+    }
+
+    [Fact]
+    public void Build_attributes_profit_log_entry_missions_to_drivers_via_stats_data_reverse_map()
+    {
+        var snapshot = new SaveSnapshot(
+            "reverse-map-test",
+            new DateTimeOffset(2026, 5, 28, 12, 0, 0, TimeSpan.Zero),
+            SiiSaveParser.Parse("""
+                SiiNunit
+                {
+                player : player {
+                  company_name: "Test Co"
+                }
+
+                garage : garage.phoenix {
+                  city: phoenix
+                  drivers[0]: driver_ai.23
+                  vehicles[0]: truck.1
+                }
+
+                driver_ai : driver_ai.23 {
+                  profit_log: profit_log.driver_ai.23
+                }
+
+                vehicle : truck.1 {
+                  license_plate: "TX-100"
+                }
+
+                profit_log : profit_log.driver_ai.23 {
+                  stats_data[0]: _nameless.1ca.2b0e.8630
+                  stats_data[1]: _nameless.268.d1f5.8870
+                }
+
+                profit_log_entry : _nameless.1ca.2b0e.8630 {
+                  revenue: 56505
+                  wage: 10000
+                  maintenance: 1000
+                  fuel: 500
+                  cargo: space_cont
+                  source_city: houston
+                  destination_city: seattle
+                  timestamp_day: 159
+                }
+
+                profit_log_entry : _nameless.268.d1f5.8870 {
+                  revenue: 51314
+                  wage: 8000
+                  maintenance: 900
+                  fuel: 450
+                  cargo: ammonia
+                  source_city: cheyenne
+                  destination_city: tacoma
+                  timestamp_day: 183
+                }
+                }
+                """));
+
+        var company = Assert.Single(StatisticsProjection.Build([snapshot]).Companies);
+
+        Assert.Equal(2, company.Missions.Count);
+        Assert.All(company.Missions, m =>
+        {
+            Assert.Equal("driver_ai.23", m.DriverId);
+        });
+
+        var driver = Assert.Single(company.Drivers);
+        Assert.Equal(2, company.Missions.Count(m => StringComparer.OrdinalIgnoreCase.Equals(m.DriverId, driver.Id)));
+
+        var garage = Assert.Single(company.Garages);
+        Assert.Equal("Phoenix", garage.DisplayName);
     }
 
     [Fact]
@@ -688,6 +759,7 @@ public sealed class StatisticsProjectionTests
 
                 trailer : trailer.reefer.1 {
                   trailer_definition: trailer_def.scs.box.reefer
+                  license_plate: "200B-420|texas"
                 }
 
                 job : job.outbound {
@@ -764,7 +836,9 @@ public sealed class StatisticsProjectionTests
         Assert.Equal("trailer.reefer.1", trailer.Id);
         Assert.Equal("trailer_def.scs.box.reefer", trailer.TrailerType);
         Assert.Equal(5500, trailer.Profit);
-        Assert.Equal(2, trailer.JobCount);
+        // JobCount comes from trailer_utilization_log; no log in this snapshot so it's 0
+        Assert.Equal(0, trailer.JobCount);
+        Assert.Equal("200B-420 Texas", trailer.LicensePlate);
 
         Assert.Collection(
             company.ProfitTrends.Where(point => point.EntityKind == "company"),
@@ -881,6 +955,91 @@ public sealed class StatisticsProjectionTests
         Assert.Empty(company.TrailerTypes);
     }
 
+    [Fact]
+    public void Build_sets_trailer_garage_id_from_garage_trailers_array_and_job_count_from_utilization_log()
+    {
+        var snapshot = new SaveSnapshot(
+            "trailer-garage-jobcount",
+            new DateTimeOffset(2026, 5, 30, 12, 0, 0, TimeSpan.Zero),
+            SiiSaveParser.Parse("""
+                SiiNunit
+                {
+                player : player {
+                  company_name: "Desert Line"
+                  trailers[0]: trailer.reefer.1
+                  trailer_utilization_logs[0]: trailer_log.reefer.1
+                }
+
+                garage : garage.phoenix {
+                  profit_log[0]: 1000
+                  employees[0]: driver.alice
+                  vehicles[0]: truck.alice
+                  trailers[0]: trailer.reefer.1
+                }
+
+                driver : driver.alice {
+                  name: "Alice"
+                  profit_log[0]: 500
+                }
+
+                vehicle : truck.alice {
+                  profit_log[0]: 300
+                }
+
+                trailer : trailer.reefer.1 {
+                  trailer_definition: trailer_def.scs.box.reefer
+                }
+
+                trailer_utilization_log : trailer_log.reefer.1 {
+                  total_transported_cargoes: 42
+                }
+                }
+                """));
+
+        var company = Assert.Single(StatisticsProjection.Build([snapshot]).Companies);
+
+        var trailer = Assert.Single(company.Trailers);
+        Assert.Equal("trailer.reefer.1", trailer.Id);
+        Assert.Equal("garage.phoenix", trailer.GarageId);
+        Assert.Equal(42, trailer.JobCount);
+    }
+
+    [Fact]
+    public void Build_extracts_license_plate_from_trailer_unit()
+    {
+        var snapshot = new SaveSnapshot(
+            "trailer-plate",
+            new DateTimeOffset(2026, 5, 30, 12, 0, 0, TimeSpan.Zero),
+            SiiSaveParser.Parse("""
+                SiiNunit
+                {
+                garage : garage.phoenix {
+                  employees[0]: driver.alice
+                  trailers[0]: trailer.reefer.1
+                }
+
+                driver : driver.alice {
+                }
+
+                trailer : trailer.reefer.1 {
+                  trailer_definition: trailer_def.scs.box.reefer
+                  license_plate: "TRL-001|california"
+                }
+
+                job : job.1 {
+                  trailer: trailer.reefer.1
+                  income: 1000
+                  source_city: phoenix
+                  target_city: los_angeles
+                }
+                }
+                """));
+
+        var trailer = Assert.Single(Assert.Single(StatisticsProjection.Build([snapshot]).Companies).Trailers);
+
+        Assert.Equal("TRL-001 California", trailer.LicensePlate);
+    }
+
     private static SaveSnapshot Snapshot(string name, string companyName, long garageProfit) =>
         new(
             name,
@@ -932,4 +1091,170 @@ public sealed class StatisticsProjectionTests
                 }
                 }
                 """));
+
+    [Fact]
+    public void Build_includes_historical_garage_when_sold_in_latest_snapshot_and_attributes_missions_to_it()
+    {
+        var older = new SaveSnapshot(
+            "save-1",
+            new DateTimeOffset(2026, 5, 25, 20, 0, 0, TimeSpan.Zero),
+            SiiSaveParser.Parse("""
+                SiiNunit
+                {
+                player : player { company_name: "Desert Line" }
+
+                garage : garage.sacramento {
+                  city: sacramento
+                  drivers[0]: driver.bob
+                  vehicles[0]: truck.1
+                }
+
+                driver_ai : driver.bob { assigned_truck: truck.1 }
+
+                vehicle : truck.1 { license_plate: "CA-001" }
+
+                job : job.sacramento.run {
+                  driver: driver.bob
+                  truck: truck.1
+                  income: 5000
+                  source_city: sacramento
+                  target_city: reno
+                  timestamp_day: 100
+                }
+                }
+                """));
+
+        var latest = new SaveSnapshot(
+            "save-2",
+            new DateTimeOffset(2026, 5, 25, 22, 0, 0, TimeSpan.Zero),
+            SiiSaveParser.Parse("""
+                SiiNunit
+                {
+                player : player { company_name: "Desert Line" }
+
+                garage : garage.sacramento {
+                  city: sacramento
+                  status: 0
+                }
+
+                garage : garage.fresno {
+                  city: fresno
+                  drivers[0]: driver.bob
+                  vehicles[0]: truck.1
+                }
+
+                driver_ai : driver.bob { assigned_truck: truck.1 }
+
+                vehicle : truck.1 { license_plate: "CA-001" }
+                }
+                """));
+
+        var company = Assert.Single(StatisticsProjection.Build([older, latest]).Companies);
+
+        // Both garages should appear — sacramento is historical, fresno is current
+        Assert.Equal(2, company.Garages.Count);
+
+        var sacramento = Assert.Single(company.Garages, g => g.Id == "garage.sacramento");
+        Assert.Equal(0, sacramento.EmployeeCount);
+        Assert.Equal(0, sacramento.TruckCount);
+
+        var fresno = Assert.Single(company.Garages, g => g.Id == "garage.fresno");
+        Assert.Equal(1, fresno.EmployeeCount);
+        Assert.Equal(1, fresno.TruckCount);
+
+        // The mission done while bob was at Sacramento must attribute to Sacramento
+        var mission = Assert.Single(company.Missions);
+        Assert.Equal("job.sacramento.run", mission.Id);
+        Assert.Equal("garage.sacramento", mission.GarageId);
+    }
+
+    [Fact]
+    public void Build_rescues_driver_attribution_from_older_snapshot_when_entry_ages_out_of_profit_log()
+    {
+        // Simulates the real-world ATS rolling profit_log:
+        // older save has entry in stats_data (attributed), newer save dropped it (orphaned).
+        // The deduplication must not discard the driverId from the older snapshot.
+        const string entryId = "_nameless.1f3.aaa.bbb";
+
+        var older = new SaveSnapshot(
+            "profiles/save/older/game.sii",
+            new DateTimeOffset(2026, 5, 25, 0, 0, 0, TimeSpan.Zero),
+            SiiSaveParser.Parse($$"""
+                SiiNunit
+                {
+                player : player {
+                  company_name: "Desert Line"
+                }
+                garage : garage.phoenix {
+                  city: phoenix
+                  employees[0]: driver.ai.1
+                  vehicles[0]: truck.1
+                }
+                driver_ai : driver.ai.1 {
+                  profit_log: profit_log.1
+                }
+                profit_log : profit_log.1 {
+                  stats_data[0]: {{entryId}}
+                }
+                profit_log_entry : {{entryId}} {
+                  revenue: 3000
+                  cargo: cargo.medicine
+                  source_city: phoenix
+                  destination_city: denver
+                  timestamp_day: 100
+                }
+                vehicle : truck.1 {
+                  license_plate: "T-1"
+                }
+                }
+                """));
+
+        // newer save: entry aged out of stats_data but unit still present in save file
+        var newer = new SaveSnapshot(
+            "profiles/save/newer/game.sii",
+            new DateTimeOffset(2026, 5, 26, 0, 0, 0, TimeSpan.Zero),
+            SiiSaveParser.Parse($$"""
+                SiiNunit
+                {
+                player : player {
+                  company_name: "Desert Line"
+                }
+                garage : garage.phoenix {
+                  city: phoenix
+                  employees[0]: driver.ai.1
+                  vehicles[0]: truck.1
+                }
+                driver_ai : driver.ai.1 {
+                  profit_log: profit_log.1
+                }
+                profit_log : profit_log.1 {
+                  stats_data[0]: _nameless.26b.new.entry
+                }
+                profit_log_entry : {{entryId}} {
+                  revenue: 3000
+                  cargo: cargo.medicine
+                  source_city: phoenix
+                  destination_city: denver
+                  timestamp_day: 100
+                }
+                profit_log_entry : _nameless.26b.new.entry {
+                  revenue: 2500
+                  cargo: cargo.paper
+                  source_city: denver
+                  destination_city: phoenix
+                  timestamp_day: 200
+                }
+                vehicle : truck.1 {
+                  license_plate: "T-1"
+                }
+                }
+                """));
+
+        var statistics = StatisticsProjection.Build([older, newer]);
+
+        var company = Assert.Single(statistics.Companies);
+        var missions = company.Missions.OrderBy(m => m.TimestampDay).ToList();
+        Assert.Equal(2, missions.Count);
+        Assert.All(missions, m => Assert.Equal("driver.ai.1", m.DriverId));
+    }
 }

@@ -136,7 +136,8 @@ public sealed record MissionStatistic(
     string? SourceCity,
     string? TargetCity,
     long Profit,
-    int? TimestampDay = null);
+    int? TimestampDay = null,
+    string? GarageId = null);
 
 public sealed record DriverRecentJobStatistic(
     string Id,
@@ -160,7 +161,11 @@ public sealed record TrailerStatistic(
     string Id,
     string TrailerType,
     long Profit,
-    int JobCount);
+    int JobCount,
+    bool IsArticulated = false,
+    string? BodyType = null,
+    string? GarageId = null,
+    string? LicensePlate = null);
 
 public sealed record CityStatistic(
     string Id,
