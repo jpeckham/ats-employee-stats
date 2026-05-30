@@ -162,6 +162,9 @@ public static partial class StatisticsProjection
         var routeStats = BuildRouteStats(missionStats);
         var cityStats = BuildCityStats(missionStats, garageStats, routeStats, garageEligibleCityIds);
         var individualTrailerStats = BuildTrailerStats(trailers, missionStats, trailerTypesByTrailer, unitsById, trailerToGarage, trailerToJobCount);
+        var trailerIdToLicensePlate = individualTrailerStats
+            .Where(t => !string.IsNullOrWhiteSpace(t.LicensePlate))
+            .ToDictionary(t => t.Id, t => t.LicensePlate!, StringComparer.OrdinalIgnoreCase);
         var (truckAssignments, garageAssignments) = BuildDriverAssignments(snapshots);
         return new CompanyStatistics(
             companyId,
@@ -176,7 +179,7 @@ public static partial class StatisticsProjection
             individualTrailerStats,
             cityStats,
             routeStats,
-            BuildProfitTrends(companyId, missionStats),
+            BuildProfitTrends(companyId, missionStats, trailerIdToLicensePlate),
             truckAssignments,
             garageAssignments);
     }
@@ -622,7 +625,8 @@ public static partial class StatisticsProjection
 
     private static IReadOnlyList<TrendPointStatistic> BuildProfitTrends(
         string companyId,
-        IReadOnlyCollection<MissionStatistic> missions)
+        IReadOnlyCollection<MissionStatistic> missions,
+        IReadOnlyDictionary<string, string> trailerIdToLicensePlate)
     {
         var trends = new List<TrendPointStatistic>();
         var timedMissions = missions
@@ -640,7 +644,9 @@ public static partial class StatisticsProjection
             .SelectMany(group => BuildTrend("truck", group.Key, group)));
         trends.AddRange(timedMissions
             .Where(mission => !string.IsNullOrWhiteSpace(mission.TrailerId))
-            .GroupBy(mission => mission.TrailerId!, StringComparer.OrdinalIgnoreCase)
+            .GroupBy(
+                mission => trailerIdToLicensePlate.GetValueOrDefault(mission.TrailerId!) ?? mission.TrailerId!,
+                StringComparer.OrdinalIgnoreCase)
             .SelectMany(group => BuildTrend("trailer", group.Key, group)));
         trends.AddRange(timedMissions
             .Where(mission => !string.IsNullOrWhiteSpace(mission.GarageId))

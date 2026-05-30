@@ -855,6 +855,21 @@ public sealed class StatisticsProjectionTests
                 Assert.Equal(2500, point.Profit);
                 Assert.Equal(1, point.SampleCount);
             });
+
+        Assert.Collection(
+            company.ProfitTrends.Where(point => point.EntityKind == "trailer").OrderBy(p => p.GameDay),
+            point =>
+            {
+                Assert.Equal("200B-420 Texas", point.EntityId);
+                Assert.Equal(200, point.GameDay);
+                Assert.Equal(3000, point.Profit);
+            },
+            point =>
+            {
+                Assert.Equal("200B-420 Texas", point.EntityId);
+                Assert.Equal(201, point.GameDay);
+                Assert.Equal(2500, point.Profit);
+            });
     }
 
     [Fact]
