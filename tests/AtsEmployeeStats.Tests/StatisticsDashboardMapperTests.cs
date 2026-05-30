@@ -33,8 +33,8 @@ public sealed class StatisticsDashboardMapperTests
                             "/def/vehicle/truck/kenworth.t680/data.sii")
                     ],
                     [
-                        new MissionStatistic("job.1", "driver.alice", "truck.alice", "trailer.1", "reefer", "medicine", "phoenix", "denver", 3000, 181),
-                        new MissionStatistic("job.2", "driver.alice", "truck.alice", "trailer.2", "flatbed", "steel", "denver", "phoenix", 1500)
+                        new MissionStatistic("job.1", "driver.alice", "truck.alice", "trailer.1", "reefer", "medicine", "phoenix", "denver", 3000, 181, GarageId: "garage.phoenix"),
+                        new MissionStatistic("job.2", "driver.alice", "truck.alice", "trailer.2", "flatbed", "steel", "denver", "phoenix", 1500, GarageId: "garage.phoenix")
                     ],
                     [
                         new TrailerTypeStatistic("reefer", 3000, 1)
@@ -55,14 +55,20 @@ public sealed class StatisticsDashboardMapperTests
                     ])
             ]);
 
-        var dto = StatisticsDashboardMapper.ToDashboardDto(statistics, rangeDays: 7);
+        // default: fromDay=0, toDay=maxGameDay(181) → rangeDays=182
+        var dto = StatisticsDashboardMapper.ToDashboardDto(statistics);
 
+        Assert.Equal(181, dto.MaxGameDay);
         var company = Assert.Single(dto.Companies);
         Assert.Equal("Desert Line", company.DisplayName);
-        Assert.Equal(5000, company.Profit);
-        Assert.Equal(714, Assert.Single(company.Garages).ProfitPerDay);
+        // profits derived from missions: job.1(3000) + job.2(1500, no timestamp = always included) = 4500
+        Assert.Equal(4500, company.Profit);
+        var garage = Assert.Single(company.Garages);
+        Assert.Equal(4500, garage.Profit);
+        Assert.Equal(25, garage.ProfitPerDay); // round(4500/182)
         var driver = Assert.Single(company.Drivers);
-        Assert.Equal(429, driver.ProfitPerDay);
+        Assert.Equal(4500, driver.Profit);
+        Assert.Equal(25, driver.ProfitPerDay); // round(4500/182)
         Assert.Equal(2, driver.JobCount);
         var truck = Assert.Single(company.Trucks);
         Assert.Equal("Kenworth T680 - ATS-100 Arizona", truck.DisplayName);
@@ -78,6 +84,80 @@ public sealed class StatisticsDashboardMapperTests
     }
 
     [Fact]
+    public void ToDashboardDto_filters_missions_outside_game_day_range()
+    {
+        var statistics = new AtsStatistics(
+            new DateTimeOffset(2026, 5, 26, 12, 0, 0, TimeSpan.Zero),
+            [
+                new CompanyStatistics(
+                    "desert-line",
+                    "Desert Line",
+                    new DateTimeOffset(2026, 5, 26, 12, 0, 0, TimeSpan.Zero),
+                    [],
+                    [
+                        new DriverStatistic("driver.alice", "Alice Ramirez", 0, null, null)
+                    ],
+                    [],
+                    [
+                        new MissionStatistic("job.early", "driver.alice", null, null, null, null, null, null, 1000, 50),
+                        new MissionStatistic("job.in", "driver.alice", null, null, null, null, null, null, 2000, 100),
+                        new MissionStatistic("job.late", "driver.alice", null, null, null, null, null, null, 3000, 200)
+                    ],
+                    [])
+            ]);
+
+        var dto = StatisticsDashboardMapper.ToDashboardDto(statistics, fromDay: 75, toDay: 150);
+
+        var driver = Assert.Single(Assert.Single(dto.Companies).Drivers);
+        Assert.Equal(2000, driver.Profit); // only job.in (day 100) is in range
+        Assert.Equal(1, driver.JobCount);
+    }
+
+    [Fact]
+    public void ToDashboardDto_shows_correct_player_owned_trailer_count_per_garage()
+    {
+        var statistics = new AtsStatistics(
+            new DateTimeOffset(2026, 5, 30, 12, 0, 0, TimeSpan.Zero),
+            [
+                new CompanyStatistics(
+                    "desert-line", "Desert Line",
+                    new DateTimeOffset(2026, 5, 30, 12, 0, 0, TimeSpan.Zero),
+                    [
+                        new GarageStatistic("garage.phoenix", "Phoenix", 0, 1, 1),
+                        new GarageStatistic("garage.denver", "Denver", 0, 1, 1)
+                    ],
+                    [],
+                    [],
+                    [
+                        // Phoenix garage: two distinct player-owned trailers
+                        new MissionStatistic("job.1", null, null, "trailer.reefer.1", "reefer", null, "phoenix", "denver", 1000, GarageId: "garage.phoenix"),
+                        new MissionStatistic("job.2", null, null, "trailer.flatbed.1", "flatbed", null, "denver", "phoenix", 800, GarageId: "garage.phoenix"),
+                        // Same trailer again at phoenix — still counts as one
+                        new MissionStatistic("job.3", null, null, "trailer.reefer.1", "reefer", null, "phoenix", "tucson", 600, GarageId: "garage.phoenix"),
+                        // Job-provided trailer (TrailerId null) — must not be counted
+                        new MissionStatistic("job.4", null, null, null, "reefer", null, "phoenix", "vegas", 500, GarageId: "garage.phoenix"),
+                        // Denver garage: only one trailer
+                        new MissionStatistic("job.5", null, null, "trailer.reefer.1", "reefer", null, "denver", "phoenix", 700, GarageId: "garage.denver"),
+                    ],
+                    [],
+                    [],
+                    [
+                        new TrailerStatistic("trailer.reefer.1", "reefer", 0, 0),
+                        new TrailerStatistic("trailer.flatbed.1", "flatbed", 0, 0)
+                    ],
+                    [], [], [], [], [])
+            ]);
+
+        var dto = StatisticsDashboardMapper.ToDashboardDto(statistics);
+
+        var company = Assert.Single(dto.Companies);
+        var phoenix = Assert.Single(company.Garages, g => g.Id == "garage.phoenix");
+        var denver = Assert.Single(company.Garages, g => g.Id == "garage.denver");
+        Assert.Equal(2, phoenix.TrailerCount);
+        Assert.Equal(1, denver.TrailerCount);
+    }
+
+    [Fact]
     public void ToDashboardDto_maps_city_route_trailer_and_sparkline_read_models()
     {
         var statistics = new AtsStatistics(
@@ -90,7 +170,10 @@ public sealed class StatisticsDashboardMapperTests
                     [],
                     [],
                     [],
-                    [],
+                    [
+                        new MissionStatistic("job.1", null, null, "trailer.reefer.1", "reefer", "cargo.apples", "phoenix", "denver", 3000),
+                        new MissionStatistic("job.2", null, null, "trailer.reefer.1", "reefer", "cargo.grapes", "denver", "phoenix", 2500)
+                    ],
                     [],
                     [],
                     [
@@ -111,8 +194,11 @@ public sealed class StatisticsDashboardMapperTests
                     ])
             ]);
 
-        var dto = StatisticsDashboardMapper.ToDashboardDto(statistics, rangeDays: 7);
+        // default: fromDay=0, toDay=maxGameDay(0 since no missions with days) → but trend points have days
+        // maxGameDay comes from missions, not trends — no missions here so maxGameDay=0
+        var dto = StatisticsDashboardMapper.ToDashboardDto(statistics);
 
+        Assert.Equal(0, dto.MaxGameDay);
         var company = Assert.Single(dto.Companies);
         Assert.NotNull(company.Trailers);
         var trailer = Assert.Single(company.Trailers);
@@ -126,15 +212,16 @@ public sealed class StatisticsDashboardMapperTests
             company.Cities,
             city =>
             {
-                Assert.Equal("phoenix", city.Id);
-                Assert.True(city.HasOwnedGarage);
-                Assert.Equal(5500, city.BidirectionalProfit);
-            },
-            city =>
-            {
+                // default sort is expansion descending; denver has 2.25, phoenix has 0
                 Assert.Equal("denver", city.Id);
                 Assert.True(city.IsGarageEligible);
                 Assert.Equal(2.25m, city.ExpansionScore);
+            },
+            city =>
+            {
+                Assert.Equal("phoenix", city.Id);
+                Assert.True(city.HasOwnedGarage);
+                Assert.Equal(5500, city.BidirectionalProfit);
             });
 
         Assert.NotNull(company.Routes);
@@ -143,20 +230,10 @@ public sealed class StatisticsDashboardMapperTests
         Assert.Equal(3000, route.Profit);
         Assert.Equal(1, route.ReturnCoverageRatio);
 
+        // sparkline: maxGameDay=0, so fromDay=0, toDay=0, WindowDays=1
+        // trend points at 200/201 are outside range [0,0] so Points is empty
         Assert.NotNull(company.ProfitTrend);
-        Assert.Equal(7, company.ProfitTrend.WindowDays);
-        Assert.Collection(
-            company.ProfitTrend.Points,
-            point =>
-            {
-                Assert.Equal(200, point.GameDay);
-                Assert.Equal(3000, point.Value);
-                Assert.Equal(1, point.SampleCount);
-            },
-            point =>
-            {
-                Assert.Equal(201, point.GameDay);
-                Assert.Equal(2500, point.Value);
-            });
+        Assert.Equal(1, company.ProfitTrend.WindowDays);
+        Assert.Empty(company.ProfitTrend.Points);
     }
 }

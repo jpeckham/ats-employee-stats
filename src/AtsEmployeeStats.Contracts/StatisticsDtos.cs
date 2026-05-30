@@ -2,7 +2,8 @@ namespace AtsEmployeeStats.Contracts;
 
 public sealed record DashboardStatisticsDto(
     DateTimeOffset? LastUpdated,
-    IReadOnlyList<CompanyDto> Companies);
+    IReadOnlyList<CompanyDto> Companies,
+    int? MaxGameDay = null);
 
 public sealed record CompanyDto(
     string Id,
@@ -19,7 +20,8 @@ public sealed record CompanyDto(
     IReadOnlyList<RouteDto>? Routes = null,
     SparklineDto? ProfitTrend = null,
     IReadOnlyList<DriverTruckAssignmentDto>? DriverTruckAssignments = null,
-    IReadOnlyList<DriverGarageAssignmentDto>? DriverGarageAssignments = null);
+    IReadOnlyList<DriverGarageAssignmentDto>? DriverGarageAssignments = null,
+    string? OwnerName = null);
 
 public sealed record GarageDto(
     string Id,
@@ -27,7 +29,9 @@ public sealed record GarageDto(
     long Profit,
     long ProfitPerDay,
     int EmployeeCount,
-    int TruckCount);
+    int TruckCount,
+    SparklineDto? Trend = null,
+    int TrailerCount = 0);
 
 public sealed record DriverDto(
     string Id,
@@ -36,7 +40,8 @@ public sealed record DriverDto(
     long ProfitPerDay,
     string? GarageId,
     string? TruckId,
-    int JobCount);
+    int JobCount,
+    SparklineDto? Trend = null);
 
 public sealed record TruckDto(
     string Id,
@@ -46,7 +51,9 @@ public sealed record TruckDto(
     string? DriverId,
     string? LicensePlate = null,
     string? ModelName = null,
-    string? DefinitionPath = null);
+    string? DefinitionPath = null,
+    long ProfitPerDay = 0,
+    SparklineDto? Trend = null);
 
 public sealed record MissionDto(
     string Id,
@@ -82,7 +89,11 @@ public sealed record TrailerDto(
     string Id,
     string TrailerType,
     long Profit,
-    int JobCount);
+    int JobCount,
+    bool IsArticulated = false,
+    string? BodyType = null,
+    long ProfitPerDay = 0,
+    SparklineDto? Trend = null);
 
 public sealed record CityDto(
     string Id,
@@ -126,6 +137,22 @@ public sealed record DriverGarageAssignmentDto(
     string EffectiveFromSaveName,
     string? EffectiveToSaveName,
     bool IsCurrent);
+
+public sealed record CollectionSortDto(
+    string? GaragesSortBy = null,
+    string? GaragesSortDir = null,
+    string? DriversSortBy = null,
+    string? DriversSortDir = null,
+    string? TrucksSortBy = null,
+    string? TrucksSortDir = null,
+    string? TrailersSortBy = null,
+    string? TrailersSortDir = null,
+    string? MissionsSortBy = null,
+    string? MissionsSortDir = null,
+    string? CitiesSortBy = null,
+    string? CitiesSortDir = null,
+    string? RoutesSortBy = null,
+    string? RoutesSortDir = null);
 
 public sealed record DashboardConfigDto(
     string SaveRoot,
