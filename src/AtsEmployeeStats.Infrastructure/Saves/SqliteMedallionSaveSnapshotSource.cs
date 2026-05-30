@@ -447,12 +447,14 @@ public sealed class SqliteMedallionSaveSnapshotSource(
             );
 
             create table if not exists silver_trailers (
+                id integer primary key,
                 company_id text not null,
+                company_pk integer,
                 trailer_id text not null,
                 trailer_type text not null,
                 profit integer not null,
                 job_count integer not null,
-                primary key (company_id, trailer_id)
+                license_plate text
             );
 
             create table if not exists silver_cities (
@@ -652,7 +654,9 @@ public sealed class SqliteMedallionSaveSnapshotSource(
         await EnsureColumnAsync(connection, "silver_jobs", "garage_id", "text", cancellationToken);
         await EnsureColumnAsync(connection, "gold_job_details", "garage_id", "text", cancellationToken);
         await EnsureColumnAsync(connection, "silver_trailers", "garage_id", "text", cancellationToken);
+        await EnsureColumnAsync(connection, "silver_trailers", "license_plate", "text", cancellationToken);
         await MigrateCompanySurrogateKeyAsync(connection, cancellationToken);
+        await MigrateTrailerSchemaAsync(connection, cancellationToken);
     }
 
     private static async Task MigrateCompanySurrogateKeyAsync(
@@ -686,6 +690,49 @@ public sealed class SqliteMedallionSaveSnapshotSource(
                 company_id text not null unique,
                 display_name text not null,
                 last_updated_utc text not null
+            )
+            """,
+            cancellationToken);
+    }
+
+    private static async Task MigrateTrailerSchemaAsync(
+        SqliteConnection connection,
+        CancellationToken cancellationToken)
+    {
+        await using var check = connection.CreateCommand();
+        check.CommandText = "pragma table_info(silver_trailers)";
+        await using var reader = await check.ExecuteReaderAsync(cancellationToken);
+        var hasIdColumn = false;
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            if (string.Equals(reader.GetString(1), "id", StringComparison.OrdinalIgnoreCase))
+            {
+                hasIdColumn = true;
+                break;
+            }
+        }
+
+        if (hasIdColumn)
+        {
+            return;
+        }
+
+        await ExecuteAsync(connection, "drop table if exists silver_trailers", cancellationToken);
+        await ExecuteAsync(
+            connection,
+            """
+            create table silver_trailers (
+                id integer primary key,
+                company_id text not null,
+                company_pk integer,
+                trailer_id text not null,
+                trailer_type text not null,
+                profit integer not null,
+                job_count integer not null,
+                body_type text,
+                is_articulated integer,
+                garage_id text,
+                license_plate text
             )
             """,
             cancellationToken);
@@ -1257,6 +1304,14 @@ public sealed class SqliteMedallionSaveSnapshotSource(
                 ("$display_name", company.DisplayName),
                 ("$last_updated_utc", FormatUtc(company.LastUpdated.UtcDateTime)));
 
+            long companyPk;
+            await using (var pkCmd = connection.CreateCommand())
+            {
+                pkCmd.CommandText = "select id from silver_companies where company_id = $company_id";
+                Add(pkCmd, "$company_id", company.Id);
+                companyPk = (long)(await pkCmd.ExecuteScalarAsync(cancellationToken) ?? 0L);
+            }
+
             foreach (var garage in company.Garages)
             {
                 await ExecuteAsync(
@@ -1391,18 +1446,20 @@ public sealed class SqliteMedallionSaveSnapshotSource(
                 await ExecuteAsync(
                     connection,
                     """
-                    insert into silver_trailers (company_id, trailer_id, trailer_type, profit, job_count, body_type, is_articulated, garage_id)
-                    values ($company_id, $trailer_id, $trailer_type, $profit, $job_count, $body_type, $is_articulated, $garage_id)
+                    insert into silver_trailers (company_id, company_pk, trailer_id, trailer_type, profit, job_count, body_type, is_articulated, garage_id, license_plate)
+                    values ($company_id, $company_pk, $trailer_id, $trailer_type, $profit, $job_count, $body_type, $is_articulated, $garage_id, $license_plate)
                     """,
                     cancellationToken,
                     ("$company_id", company.Id),
+                    ("$company_pk", companyPk),
                     ("$trailer_id", trailer.Id),
                     ("$trailer_type", trailer.TrailerType),
                     ("$profit", trailer.Profit),
                     ("$job_count", trailer.JobCount),
                     ("$body_type", trailer.BodyType),
                     ("$is_articulated", trailer.IsArticulated ? 1 : 0),
-                    ("$garage_id", trailer.GarageId));
+                    ("$garage_id", trailer.GarageId),
+                    ("$license_plate", trailer.LicensePlate));
             }
 
             foreach (var city in company.Cities)
@@ -2196,7 +2253,7 @@ public sealed class SqliteMedallionSaveSnapshotSource(
         var values = new List<TrailerStatistic>();
         await using var command = connection.CreateCommand();
         command.CommandText = """
-            select trailer_id, trailer_type, profit, job_count, body_type, is_articulated, garage_id
+            select trailer_id, trailer_type, profit, job_count, body_type, is_articulated, garage_id, license_plate
             from silver_trailers
             where company_id = $company_id
             order by profit desc, trailer_id
@@ -2212,7 +2269,8 @@ public sealed class SqliteMedallionSaveSnapshotSource(
                 reader.GetInt32(3),
                 IsArticulated: reader.IsDBNull(5) ? false : reader.GetInt32(5) != 0,
                 BodyType: GetNullableString(reader, 4),
-                GarageId: GetNullableString(reader, 6)));
+                GarageId: GetNullableString(reader, 6),
+                LicensePlate: GetNullableString(reader, 7)));
         }
 
         return values;

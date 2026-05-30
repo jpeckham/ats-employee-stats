@@ -494,6 +494,25 @@ public sealed class SqliteMedallionSaveSnapshotSourceTests : IDisposable
         Assert.False(string.IsNullOrWhiteSpace(companyId));
     }
 
+    [Fact]
+    public async Task StatisticsService_persists_trailer_license_plate_to_silver_trailers()
+    {
+        await WriteAnalyticSaveAsync();
+        var source = new SqliteMedallionSaveSnapshotSource(_root, _dbPath);
+        var service = new StatisticsService(source);
+
+        await service.IngestAsync(CancellationToken.None);
+
+        using var connection = OpenTestConnection();
+        await connection.OpenAsync();
+        await using var cmd = connection.CreateCommand();
+        cmd.CommandText = "select license_plate, company_pk from silver_trailers where company_id = 'desert-line' and trailer_id = 'trailer.reefer.1'";
+        await using var reader = await cmd.ExecuteReaderAsync();
+        Assert.True(await reader.ReadAsync());
+        Assert.Equal("200B-420 Texas", reader.GetString(0));
+        Assert.True(reader.GetInt64(1) > 0);
+    }
+
     public void Dispose()
     {
         if (Directory.Exists(_root))
@@ -594,6 +613,7 @@ public sealed class SqliteMedallionSaveSnapshotSourceTests : IDisposable
 
             trailer : trailer.reefer.1 {
               trailer_definition: trailer_def.scs.box.reefer
+              license_plate: "200B-420|texas"
             }
             }
             """);
