@@ -65,7 +65,7 @@ public sealed class DashboardViewModelTests
         Assert.Equal("job.1", DashboardViewModel.FindJob(company, "job.1")?.Id);
         Assert.Equal("phoenix", DashboardViewModel.FindCity(company, "phoenix")?.Id);
         Assert.Equal("truck.current", DashboardViewModel.FindTruck(company, "truck.current")?.Id);
-        Assert.Equal("trailer.reefer.1", DashboardViewModel.FindTrailer(company, "trailer.reefer.1")?.Id);
+        Assert.Equal("trailer.reefer.1", DashboardViewModel.FindTrailer(company, "200B-420 Texas")?.Id);
         Assert.Equal("denver", DashboardViewModel.FindRoute(company, "phoenix", "denver")?.DestinationCityId);
     }
 
@@ -118,28 +118,27 @@ public sealed class DashboardViewModelTests
         var phoenixTrailers = DashboardViewModel.GetGarageTrailers(company, "garage.phoenix");
         var denverTrailers = DashboardViewModel.GetGarageTrailers(company, "garage.denver");
 
-        // truck.current's job (job.1) at garage.phoenix used trailer.reefer.1
+        // trailer.reefer.1 has GarageId = "garage.phoenix"
         Assert.Equal(["trailer.reefer.1"], phoenixTrailers.Select(t => t.Id));
-        // job.2 at garage.denver used trailer.reefer.1, job.3 at garage.denver used trailer.dryvan.1
-        Assert.Equal(
-            new[] { "trailer.dryvan.1", "trailer.reefer.1" },
-            denverTrailers.Select(t => t.Id).OrderBy(x => x));
+        // trailer.dryvan.1 has GarageId = "garage.denver"
+        Assert.Equal(["trailer.dryvan.1"], denverTrailers.Select(t => t.Id));
     }
 
     [Fact]
-    public void GetGarageTrailers_excludes_job_provided_trailers_that_have_no_trailer_id()
+    public void GetGarageTrailers_excludes_trailers_without_a_garage_id()
     {
         var company = CreateCompany() with
         {
-            Missions = [
-                new MissionDto("job.no-trailer", "driver.alice", "truck.current", "reefer", "food", "phoenix", "denver", 1_000, GarageId: "garage.phoenix")
-                // TrailerId defaults to null — this is a job-provided trailer
+            Trailers = [
+                new TrailerDto("trailer.reefer.1", "reefer", 4_500, 2, LicensePlate: "200B-420 Texas"),
+                new TrailerDto("trailer.dryvan.1", "dryvan", 900, 1)
+                // Neither has a GarageId set
             ]
         };
 
-        var trailers = DashboardViewModel.GetGarageTrailers(company, "garage.phoenix");
+        var phoenixTrailers = DashboardViewModel.GetGarageTrailers(company, "garage.phoenix");
 
-        Assert.Empty(trailers);
+        Assert.Empty(phoenixTrailers);
     }
 
     private static CompanyDto CreateCompany() =>
@@ -184,8 +183,8 @@ public sealed class DashboardViewModelTests
                 new DriverRecentJobDto("recent.bob", "driver.bob", "truck.other", "paper", "denver", "vegas", 900, 100, 800, 90, 106)
             ],
             [
-                new TrailerDto("trailer.reefer.1", "reefer", 4_500, 2),
-                new TrailerDto("trailer.dryvan.1", "dryvan", 900, 1)
+                new TrailerDto("trailer.reefer.1", "reefer", 4_500, 2, GarageId: "garage.phoenix", LicensePlate: "200B-420 Texas"),
+                new TrailerDto("trailer.dryvan.1", "dryvan", 900, 1, GarageId: "garage.denver", LicensePlate: "425K-180 Arizona")
             ],
             [
                 new CityDto("phoenix", "Phoenix", true, true, 2, 3_000, 1_500, 4_500, 0),

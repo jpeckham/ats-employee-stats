@@ -16,8 +16,8 @@ public static class DashboardViewModel
     public static TruckDto? FindTruck(CompanyDto company, string truckId) =>
         company.Trucks.FirstOrDefault(truck => IdEquals(truck.Id, truckId));
 
-    public static TrailerDto? FindTrailer(CompanyDto company, string trailerId) =>
-        (company.Trailers ?? []).FirstOrDefault(trailer => IdEquals(trailer.Id, trailerId));
+    public static TrailerDto? FindTrailer(CompanyDto company, string licensePlate) =>
+        (company.Trailers ?? []).FirstOrDefault(trailer => IdEquals(trailer.LicensePlate, licensePlate));
 
     public static MissionDto? FindJob(CompanyDto company, string jobId) =>
         company.Missions.FirstOrDefault(job => IdEquals(job.Id, jobId));
@@ -40,17 +40,10 @@ public static class DashboardViewModel
             .Where(truck => IdEquals(truck.GarageId, garageId))
             .ToList();
 
-    public static IReadOnlyList<TrailerDto> GetGarageTrailers(CompanyDto company, string garageId)
-    {
-        var trailerIds = company.Missions
-            .Where(m => IdEquals(m.GarageId, garageId) && !string.IsNullOrWhiteSpace(m.TrailerId))
-            .Select(m => m.TrailerId!)
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
-
-        return (company.Trailers ?? [])
-            .Where(t => trailerIds.Contains(t.Id))
+    public static IReadOnlyList<TrailerDto> GetGarageTrailers(CompanyDto company, string garageId) =>
+        (company.Trailers ?? [])
+            .Where(t => IdEquals(t.GarageId, garageId))
             .ToList();
-    }
 
     public static IReadOnlyList<MissionDto> GetDriverJobs(CompanyDto company, string driverId) =>
         company.Missions
