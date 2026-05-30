@@ -207,7 +207,7 @@ public sealed class SqliteMedallionSaveSnapshotSourceTests : IDisposable
                 "select display_name, garage_id, truck_id from silver_drivers where driver_id = 'driver.alice'",
                 reader => (reader.GetString(0), reader.GetString(1), reader.GetString(2))));
         Assert.Equal(
-            ("garage.phoenix", "phoenix", 2400L),
+            ("garage.phoenix", "Phoenix", 2400L),
             await QuerySingleAsync<(string, string, long)>(
                 connection,
                 "select garage_id, display_name, profit from gold_garage_ranking",
