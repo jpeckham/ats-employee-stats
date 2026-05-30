@@ -207,7 +207,7 @@ public sealed class SqliteMedallionSaveSnapshotSourceTests : IDisposable
                 "select display_name, garage_id, truck_id from silver_drivers where driver_id = 'driver.alice'",
                 reader => (reader.GetString(0), reader.GetString(1), reader.GetString(2))));
         Assert.Equal(
-            ("garage.phoenix", "phoenix", 2400L),
+            ("garage.phoenix", "Phoenix", 2400L),
             await QuerySingleAsync<(string, string, long)>(
                 connection,
                 "select garage_id, display_name, profit from gold_garage_ranking",
@@ -471,6 +471,27 @@ public sealed class SqliteMedallionSaveSnapshotSourceTests : IDisposable
         await service.IngestAsync(CancellationToken.None, new CapturingProgress(progress));
 
         Assert.DoesNotContain(progress, p => p.Stage == SaveLoadStage.LoadingFiles);
+    }
+
+    [Fact]
+    public async Task StatisticsService_assigns_integer_surrogate_key_to_silver_companies()
+    {
+        await WriteAnalyticSaveAsync();
+        var source = new SqliteMedallionSaveSnapshotSource(_root, _dbPath);
+        var service = new StatisticsService(source);
+
+        await service.IngestAsync(CancellationToken.None);
+
+        using var connection = OpenTestConnection();
+        await connection.OpenAsync();
+
+        var (id, companyId) = await QuerySingleAsync<(long, string)>(
+            connection,
+            "select id, company_id from silver_companies",
+            reader => (reader.GetInt64(0), reader.GetString(1)));
+
+        Assert.True(id > 0);
+        Assert.False(string.IsNullOrWhiteSpace(companyId));
     }
 
     public void Dispose()
@@ -756,12 +777,15 @@ public sealed class SqliteMedallionSaveSnapshotSourceTests : IDisposable
             {
             player : player {
               company_name: "Desert Line"
+              trailers[0]: trailer.reefer.1
+              trailer_utilization_logs[0]: trailer_log.reefer.1
             }
 
             garage : garage.phoenix {
               city: phoenix
               employees[0]: driver.alice
               vehicles[0]: truck.alice
+              trailers[0]: trailer.reefer.1
             }
 
             garage : garage.denver {
@@ -780,6 +804,10 @@ public sealed class SqliteMedallionSaveSnapshotSourceTests : IDisposable
 
             trailer : trailer.reefer.1 {
               trailer_definition: trailer_def.scs.box.reefer
+            }
+
+            trailer_utilization_log : trailer_log.reefer.1 {
+              total_transported_cargoes: 2
             }
 
             job : job.outbound {
