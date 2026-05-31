@@ -101,6 +101,7 @@
                             <SortableColumnHeader Column="name" ActiveColumn="@_driversSortBy" Descending="@_driversSortDesc" OnSort="SortDriversAsync">Driver</SortableColumnHeader>
                             <SortableColumnHeader Column="profit" ActiveColumn="@_driversSortBy" Descending="@_driversSortDesc" OnSort="SortDriversAsync">Profit</SortableColumnHeader>
                             <SortableColumnHeader Column="profitPerDay" ActiveColumn="@_driversSortBy" Descending="@_driversSortDesc" OnSort="SortDriversAsync">Avg $/day</SortableColumnHeader>
+                            <SortableColumnHeader Column="recentProfitPerDay" ActiveColumn="@_driversSortBy" Descending="@_driversSortDesc" OnSort="SortDriversAsync">Recent $/day</SortableColumnHeader>
                             <th>Truck</th>
                             <SortableColumnHeader Column="jobCount" ActiveColumn="@_driversSortBy" Descending="@_driversSortDesc" OnSort="SortDriversAsync">Jobs</SortableColumnHeader>
                             <th></th>
@@ -116,6 +117,7 @@
                                 <td>@driver.DisplayName</td>
                                 <td>@Money(driver.Profit)</td>
                                 <td>@Money(driver.ProfitPerDay)</td>
+                                <td>@Money(driver.RecentProfitPerDay)</td>
                                 <td>@DashboardViewModel.GetTruckDisplayName(SelectedCompany, driver.TruckId)</td>
                                 <td>@driver.JobCount</td>
                                 <td>@SparklineSvg(driver.Trend)</td>

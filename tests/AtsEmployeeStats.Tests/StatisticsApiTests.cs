@@ -256,7 +256,7 @@ public sealed class StatisticsApiTests
         var driver = Assert.Single(company.Drivers);
         Assert.Equal("Alice Ramirez", driver.DisplayName);
         Assert.Equal(5500, driver.Profit); // job.outbound(3000) + job.return(2500)
-        Assert.Equal(27, driver.ProfitPerDay); // 5500/202
+        Assert.Equal(2750, driver.ProfitPerDay); // 5500/2 — driver first appeared on day 200, active 2 days
         Assert.Equal(2, driver.JobCount);
     }
 

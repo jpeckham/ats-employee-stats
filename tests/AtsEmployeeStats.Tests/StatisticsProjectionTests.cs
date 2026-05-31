@@ -665,7 +665,7 @@ public sealed class StatisticsProjectionTests
     }
 
     [Fact]
-    public void Build_excludes_unowned_garages_with_zero_status()
+    public void Build_excludes_unowned_garages_with_zero_or_one_status()
     {
         var snapshot = new SaveSnapshot(
             "owned-garages",
@@ -683,6 +683,12 @@ public sealed class StatisticsProjectionTests
                   city: tucson
                   status: 0
                   profit_log[0]: 500
+                }
+
+                garage : garage.sacramento {
+                  city: sacramento
+                  status: 1
+                  profit_log[0]: 800
                 }
                 }
                 """));
@@ -1246,7 +1252,7 @@ public sealed class StatisticsProjectionTests
 
                 garage : garage.sacramento {
                   city: sacramento
-                  status: 0
+                  status: 1
                 }
 
                 garage : garage.fresno {
@@ -1278,6 +1284,10 @@ public sealed class StatisticsProjectionTests
         var mission = Assert.Single(company.Missions);
         Assert.Equal("job.sacramento.run", mission.Id);
         Assert.Equal("garage.sacramento", mission.GarageId);
+
+        // The sold city must not show as owned in the cities view
+        var sacramentoCity = Assert.Single(company.Cities, c => c.Id == "sacramento");
+        Assert.False(sacramentoCity.HasOwnedGarage);
     }
 
     [Fact]

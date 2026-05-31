@@ -41,7 +41,8 @@ public sealed record DriverDto(
     string? GarageId,
     string? TruckId,
     int JobCount,
-    SparklineDto? Trend = null);
+    SparklineDto? Trend = null,
+    long RecentProfitPerDay = 0);
 
 public sealed record TruckDto(
     string Id,

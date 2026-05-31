@@ -34,7 +34,7 @@ public sealed class StatisticsDashboardMapperTests
                     ],
                     [
                         new MissionStatistic("job.1", "driver.alice", "truck.alice", "trailer.1", "reefer", "medicine", "phoenix", "denver", 3000, 181, GarageId: "garage.phoenix", TrailerLicensePlate: "200B-420 Texas"),
-                        new MissionStatistic("job.2", "driver.alice", "truck.alice", "trailer.2", "flatbed", "steel", "denver", "phoenix", 1500, GarageId: "garage.phoenix")
+                        new MissionStatistic("job.2", "driver.alice", "truck.alice", "trailer.2", "flatbed", "steel", "denver", "phoenix", 1500, 1, GarageId: "garage.phoenix")
                     ],
                     [
                         new TrailerTypeStatistic("reefer", 3000, 1)
@@ -55,7 +55,7 @@ public sealed class StatisticsDashboardMapperTests
                     ])
             ]);
 
-        // default: fromDay=0, toDay=maxGameDay(181) → rangeDays=182
+        // default: fromDay=0, toDay=maxGameDay(181); driver's first day=1, so driverDays=181
         var dto = StatisticsDashboardMapper.ToDashboardDto(statistics);
 
         Assert.Equal(181, dto.MaxGameDay);
@@ -68,7 +68,7 @@ public sealed class StatisticsDashboardMapperTests
         Assert.Equal(25, garage.ProfitPerDay); // round(4500/182)
         var driver = Assert.Single(company.Drivers);
         Assert.Equal(4500, driver.Profit);
-        Assert.Equal(25, driver.ProfitPerDay); // round(4500/182)
+        Assert.Equal(25, driver.ProfitPerDay); // round(4500/181) — driver active from day 1
         Assert.Equal(2, driver.JobCount);
         var truck = Assert.Single(company.Trucks);
         Assert.Equal("Kenworth T680 - ATS-100 Arizona", truck.DisplayName);

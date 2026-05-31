@@ -170,7 +170,8 @@ public static partial class StatisticsProjection
         var trailerToGarage = BuildReverseLookup(garages, "trailers");
         var trailerToJobCount = BuildTrailerJobCounts(units, unitsById);
         var routeStats = BuildRouteStats(missionStats);
-        var cityStats = BuildCityStats(missionStats, garageStats, routeStats, garageEligibleCityIds);
+        var currentGarageStats = garageStats.Where(g => currentGarageIds.Contains(g.Id)).ToList();
+        var cityStats = BuildCityStats(missionStats, currentGarageStats, routeStats, garageEligibleCityIds);
         var individualTrailerStats = BuildTrailerStats(trailers, missionStats, trailerTypesByTrailer, unitsById, trailerToGarage, trailerToJobCount);
         var (truckAssignments, garageAssignments) = BuildDriverAssignments(snapshots);
         return new CompanyStatistics(
@@ -280,7 +281,8 @@ public static partial class StatisticsProjection
     private static bool IsOwnedGarage(SiiUnit garage)
     {
         var status = garage.GetValue("status");
-        return status is null || !StringComparer.OrdinalIgnoreCase.Equals(status, "0");
+        if (status is null) return true;
+        return int.TryParse(status, out var statusValue) && statusValue >= 2;
     }
 
     private static IEnumerable<HistoricalMission> BuildSnapshotMissions(SaveSnapshot snapshot)

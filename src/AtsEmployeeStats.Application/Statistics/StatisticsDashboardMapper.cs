@@ -50,6 +50,19 @@ public static class StatisticsDashboardMapper
 
         var rangeDays = Math.Max(1, toDay - fromDay + 1);
 
+        var driverFirstDay = filteredMissions
+            .Where(m => m.DriverId != null && m.TimestampDay.HasValue)
+            .GroupBy(m => m.DriverId!, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.Min(m => m.TimestampDay!.Value), StringComparer.OrdinalIgnoreCase);
+
+        const int RecentWindowDays = 7;
+        var recentFromDay = Math.Max(fromDay, toDay - RecentWindowDays + 1);
+        var recentWindowSize = Math.Max(1, toDay - recentFromDay + 1);
+        var driverRecentProfit = filteredMissions
+            .Where(m => m.DriverId != null && m.TimestampDay.HasValue && m.TimestampDay.Value >= recentFromDay)
+            .GroupBy(m => m.DriverId!, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.Sum(m => m.Profit), StringComparer.OrdinalIgnoreCase);
+
         var nameParts = company.DisplayName.Split('|', 2);
         var displayName = nameParts[0].Trim();
         var ownerName = nameParts.Length > 1 ? nameParts[1].Trim() : (string?)null;
@@ -69,15 +82,22 @@ public static class StatisticsDashboardMapper
             ToSparkline(company.ProfitTrends, "garage", garage.Id, fromDay, toDay),
             garageTrailerCount.GetValueOrDefault(garage.Id)));
 
-        var driverDtos = company.Drivers.Select(driver => new DriverDto(
+        var driverDtos = company.Drivers.Select(driver =>
+        {
+            var driverDays = driverFirstDay.TryGetValue(driver.Id, out var firstDay)
+                ? Math.Max(1, toDay - Math.Max(firstDay, fromDay) + 1)
+                : rangeDays;
+            return new DriverDto(
             driver.Id,
             driver.DisplayName,
             driverProfit.GetValueOrDefault(driver.Id),
-            MoneyPerDay(driverProfit.GetValueOrDefault(driver.Id), rangeDays),
+            MoneyPerDay(driverProfit.GetValueOrDefault(driver.Id), driverDays),
             driver.GarageId,
             driver.TruckId,
             filteredMissions.Count(m => StringComparer.OrdinalIgnoreCase.Equals(m.DriverId, driver.Id)),
-            ToSparkline(company.ProfitTrends, "driver", driver.Id, fromDay, toDay)));
+            ToSparkline(company.ProfitTrends, "driver", driver.Id, fromDay, toDay),
+            MoneyPerDay(driverRecentProfit.GetValueOrDefault(driver.Id), recentWindowSize));
+        });
 
         var truckDtos = company.Trucks.Select(truck => new TruckDto(
             truck.Id,
@@ -151,6 +171,7 @@ public static class StatisticsDashboardMapper
                 ("name", d => (IComparable?)d.DisplayName),
                 ("profit", d => d.Profit),
                 ("profitPerDay", d => d.ProfitPerDay),
+                ("recentProfitPerDay", d => d.RecentProfitPerDay),
                 ("jobCount", d => (IComparable?)d.JobCount)),
             SortedList(truckDtos, sort?.TrucksSortBy, sort?.TrucksSortDir, "profit",
                 ("name", t => (IComparable?)t.DisplayName),
