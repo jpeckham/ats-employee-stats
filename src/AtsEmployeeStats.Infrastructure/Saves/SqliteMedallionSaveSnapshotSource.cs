@@ -1057,14 +1057,28 @@ public sealed class SqliteMedallionSaveSnapshotSource(
             cancellationToken,
             ("$archive_id", extracted.ArchiveHash));
 
-        foreach (var fileName in new[] { "driver_names.sii", "local.sii" })
+        // Standalone SII files: normalize brace style then parse (locale files may have
+        // the opening { on its own line; append-syntax key[]: is also supported)
+        foreach (var fileName in new[] { "driver_names.sii", "local.sii", "local.override.sii" })
         {
             foreach (var path in Directory.EnumerateFiles(extracted.OutputDirectory, fileName, SearchOption.AllDirectories))
             {
-                var relativePath = Path.GetRelativePath(extracted.OutputDirectory, path)
-                    .Replace(Path.DirectorySeparatorChar, '/')
-                    .Replace(Path.AltDirectorySeparatorChar, '/');
-                var document = SiiSaveParser.Parse(await File.ReadAllTextAsync(path, cancellationToken));
+                var relativePath = ToRelativeForwardSlash(extracted.OutputDirectory, path);
+                var raw = await File.ReadAllTextAsync(path, cancellationToken);
+                var document = SiiSaveParser.Parse(SiiSaveParser.NormalizeSeparateBrace(raw));
+                await InsertReferenceUnitsAsync(connection, extracted.ArchiveHash, relativePath, document, cancellationToken);
+            }
+        }
+
+        // .sui fragment files: wrap in a synthetic localization_db unit before parsing
+        foreach (var fileName in new[] { "localization.sui" })
+        {
+            foreach (var path in Directory.EnumerateFiles(extracted.OutputDirectory, fileName, SearchOption.AllDirectories))
+            {
+                var relativePath = ToRelativeForwardSlash(extracted.OutputDirectory, path);
+                var raw = await File.ReadAllTextAsync(path, cancellationToken);
+                var wrapped = $"SiiNunit\n{{\nlocalization_db : .locale_fragment {{\n{raw}\n}}\n}}";
+                var document = SiiSaveParser.Parse(wrapped);
                 await InsertReferenceUnitsAsync(connection, extracted.ArchiveHash, relativePath, document, cancellationToken);
             }
         }
@@ -1532,6 +1546,7 @@ public sealed class SqliteMedallionSaveSnapshotSource(
             await ApplyReferenceDriverNamesAsync(connection, cancellationToken);
             await PersistGoldAsync(connection, company, cancellationToken);
             await ApplyReferenceCargoNamesAsync(connection, cancellationToken);
+            await ApplyReferenceCityNamesAsync(connection, cancellationToken);
         }
 
         await transaction.CommitAsync(cancellationToken);
@@ -1574,7 +1589,7 @@ public sealed class SqliteMedallionSaveSnapshotSource(
         SqliteConnection connection,
         CancellationToken cancellationToken)
     {
-        var locale = await LoadLocaleAsync(connection, "%local.sii%", cancellationToken);
+        var locale = await LoadLocaleAsync(connection, "%en_us%", cancellationToken);
         if (locale.Count == 0) return;
 
         foreach (var tableName in new[] { "silver_jobs", "gold_job_details" })
@@ -1603,6 +1618,47 @@ public sealed class SqliteMedallionSaveSnapshotSource(
                     await updateCmd.ExecuteNonQueryAsync(cancellationToken);
                 }
             }
+        }
+    }
+
+    private static async Task ApplyReferenceCityNamesAsync(
+        SqliteConnection connection,
+        CancellationToken cancellationToken)
+    {
+        var locale = await LoadLocaleAsync(connection, "%en_us%", cancellationToken);
+        if (locale.Count == 0) return;
+
+        List<string> cityIds;
+        await using (var selectCmd = connection.CreateCommand())
+        {
+            selectCmd.CommandText = "select distinct city_id from silver_cities where city_id is not null";
+            await using var reader = await selectCmd.ExecuteReaderAsync(cancellationToken);
+            cityIds = [];
+            while (await reader.ReadAsync(cancellationToken))
+                cityIds.Add(reader.GetString(0));
+        }
+
+        await using var updateCitiesCmd = connection.CreateCommand();
+        updateCitiesCmd.CommandText = "update silver_cities set display_name = $display_name where city_id = $city_id";
+        var cityIdParam = updateCitiesCmd.Parameters.Add("$city_id", Microsoft.Data.Sqlite.SqliteType.Text);
+        var cityNameParam = updateCitiesCmd.Parameters.Add("$display_name", Microsoft.Data.Sqlite.SqliteType.Text);
+
+        await using var updateGaragesCmd = connection.CreateCommand();
+        // garage_id has the form "garage.<city_slug>" — match on the slug suffix
+        updateGaragesCmd.CommandText = "update silver_garages set display_name = $display_name where garage_id = 'garage.' || $city_id";
+        var garageCityParam = updateGaragesCmd.Parameters.Add("$city_id", Microsoft.Data.Sqlite.SqliteType.Text);
+        var garageNameParam = updateGaragesCmd.Parameters.Add("$display_name", Microsoft.Data.Sqlite.SqliteType.Text);
+
+        foreach (var cityId in cityIds)
+        {
+            if (!locale.TryGetValue(cityId, out var name) || string.IsNullOrWhiteSpace(name)) continue;
+            cityIdParam.Value = cityId;
+            cityNameParam.Value = name;
+            await updateCitiesCmd.ExecuteNonQueryAsync(cancellationToken);
+
+            garageCityParam.Value = cityId;
+            garageNameParam.Value = name;
+            await updateGaragesCmd.ExecuteNonQueryAsync(cancellationToken);
         }
     }
 
@@ -2505,6 +2561,11 @@ public sealed class SqliteMedallionSaveSnapshotSource(
 
     private static string FormatUtc(DateTime value) =>
         value.ToUniversalTime().ToString("O");
+
+    private static string ToRelativeForwardSlash(string root, string path) =>
+        Path.GetRelativePath(root, path)
+            .Replace(Path.DirectorySeparatorChar, '/')
+            .Replace(Path.AltDirectorySeparatorChar, '/');
 
     private sealed class InlineProgress<T>(Action<T> onReport) : IProgress<T>
     {

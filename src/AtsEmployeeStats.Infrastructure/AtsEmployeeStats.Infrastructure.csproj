@@ -8,14 +8,12 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.8" />
     <PackageReference Include="SIIDecryptSharp" Version="1.0.1" />
+    <PackageReference Include="TruckLib.HashFs" Version="0.2.6" />
     <PackageReference Include="zlib-msvc-x64" Version="1.2.11.8900" />
   </ItemGroup>
 
   <ItemGroup Condition="'$(OS)' == 'Windows_NT'">
-    <None Include="$(NuGetPackageRoot)zlib-msvc-x64\1.2.11.8900\build\native\bin_release\zlib.dll"
-          Link="zlib.dll"
-          CopyToOutputDirectory="PreserveNewest"
-          CopyToPublishDirectory="PreserveNewest" />
+    <None Include="$(NuGetPackageRoot)zlib-msvc-x64\1.2.11.8900\build\native\bin_release\zlib.dll" Link="zlib.dll" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 
   <PropertyGroup>

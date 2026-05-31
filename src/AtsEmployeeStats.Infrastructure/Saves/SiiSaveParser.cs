@@ -2,6 +2,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 using AtsEmployeeStats.Domain.Saves;
 
+
 namespace AtsEmployeeStats.Infrastructure.Saves;
 
 public static partial class SiiSaveParser
@@ -80,7 +81,10 @@ public static partial class SiiSaveParser
                     arrays[key] = array;
                 }
 
-                array[int.Parse(indexGroup.Value)] = value;
+                var index = string.IsNullOrEmpty(indexGroup.Value)
+                    ? array.Count   // append syntax key[]: uses next sequential slot
+                    : int.Parse(indexGroup.Value);
+                array[index] = value;
             }
             else
             {
@@ -162,9 +166,20 @@ public static partial class SiiSaveParser
         return builder.ToString();
     }
 
+    /// <summary>
+    /// Normalizes SII content where the unit-opening brace appears on its own line
+    /// (common in locale files) into the inline form the parser expects.
+    /// <c>localization_db : .x\n{</c> → <c>localization_db : .x {</c>
+    /// </summary>
+    public static string NormalizeSeparateBrace(string content) =>
+        SeparateBraceRegex().Replace(content, "$1 {");
+
+    [GeneratedRegex(@"(?m)^([ \t]*[A-Za-z0-9_\.]+[ \t]*:[ \t]*[^\s{]+)[ \t]*\r?\n[ \t]*\{[ \t]*$")]
+    private static partial Regex SeparateBraceRegex();
+
     [GeneratedRegex(@"^(?<type>[A-Za-z0-9_\.]+)\s*:\s*(?<id>[^\s{]+)\s*\{\s*$")]
     private static partial Regex UnitStartRegex();
 
-    [GeneratedRegex(@"^(?<key>[A-Za-z0-9_]+)(?:\[(?<index>\d+)\])?\s*:\s*(?<value>.+?)\s*$")]
+    [GeneratedRegex(@"^(?<key>[A-Za-z0-9_]+)(?:\[(?<index>\d*)\])?\s*:\s*(?<value>.+?)\s*$")]
     private static partial Regex FieldRegex();
 }
