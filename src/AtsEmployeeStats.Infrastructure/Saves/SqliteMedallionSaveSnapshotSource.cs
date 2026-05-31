@@ -1190,7 +1190,7 @@ public sealed class SqliteMedallionSaveSnapshotSource(
         {
             var values = JsonSerializer.Deserialize<Dictionary<string, string>>(reader.GetString(2), JsonOptions)
                 ?? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-            var arrays = JsonSerializer.Deserialize<Dictionary<string, List<string>>>(reader.GetString(3), JsonOptions)
+            var arrays = JsonSerializer.Deserialize<Dictionary<string, Dictionary<string, string>>>(reader.GetString(3), JsonOptions)
                 ?? [];
 
             units.Add(new SiiUnit(
@@ -1199,7 +1199,7 @@ public sealed class SqliteMedallionSaveSnapshotSource(
                 new Dictionary<string, string>(values, StringComparer.OrdinalIgnoreCase),
                 arrays.ToDictionary(
                     pair => pair.Key,
-                    pair => (IReadOnlyList<string>)pair.Value,
+                    pair => (IReadOnlyDictionary<string, string>)pair.Value,
                     StringComparer.OrdinalIgnoreCase)));
         }
 
@@ -1556,13 +1556,37 @@ public sealed class SqliteMedallionSaveSnapshotSource(
         SqliteConnection connection,
         CancellationToken cancellationToken)
     {
-        var locale = await LoadLocaleAsync(connection, "%driver_names%", cancellationToken);
-        if (locale.Count == 0) return;
+        // driver_names.sii stores names as name[N] where N is the numeric suffix of driver.N.
+        // Unit type is 'driver_names', not 'localization_db', so LoadLocaleAsync won't find it.
+        var namesByIndex = new Dictionary<int, string>();
+        await using (var selectCmd = connection.CreateCommand())
+        {
+            selectCmd.CommandText = """
+                select array_values_json
+                from bronze_reference_sii_units
+                where unit_type = 'driver_names'
+                limit 1
+                """;
+            await using var reader = await selectCmd.ExecuteReaderAsync(cancellationToken);
+            if (await reader.ReadAsync(cancellationToken))
+            {
+                var arrays = JsonSerializer.Deserialize<Dictionary<string, Dictionary<string, string>>>(reader.GetString(0), JsonOptions);
+                if (arrays is not null && arrays.TryGetValue("name", out var nameArray))
+                {
+                    foreach (var (idxStr, rawName) in nameArray)
+                    {
+                        if (int.TryParse(idxStr, out var idx))
+                        {
+                            var display = rawName.TrimStart('+');
+                            if (!string.IsNullOrWhiteSpace(display))
+                                namesByIndex[idx] = display;
+                        }
+                    }
+                }
+            }
+        }
 
-        await using var updateCmd = connection.CreateCommand();
-        updateCmd.CommandText = "update silver_drivers set display_name = $display_name where driver_id = $driver_id";
-        var driverParam = updateCmd.Parameters.Add("$driver_id", Microsoft.Data.Sqlite.SqliteType.Text);
-        var nameParam = updateCmd.Parameters.Add("$display_name", Microsoft.Data.Sqlite.SqliteType.Text);
+        if (namesByIndex.Count == 0) return;
 
         List<string> driverIds;
         await using (var selectCmd = connection.CreateCommand())
@@ -1574,14 +1598,19 @@ public sealed class SqliteMedallionSaveSnapshotSource(
                 driverIds.Add(reader.GetString(0));
         }
 
+        await using var updateCmd = connection.CreateCommand();
+        updateCmd.CommandText = "update silver_drivers set display_name = $display_name where driver_id = $driver_id";
+        var driverParam = updateCmd.Parameters.Add("$driver_id", Microsoft.Data.Sqlite.SqliteType.Text);
+        var nameParam = updateCmd.Parameters.Add("$display_name", Microsoft.Data.Sqlite.SqliteType.Text);
+
         foreach (var driverId in driverIds)
         {
-            if (locale.TryGetValue(driverId, out var name) && !string.IsNullOrWhiteSpace(name))
-            {
-                driverParam.Value = driverId;
-                nameParam.Value = name;
-                await updateCmd.ExecuteNonQueryAsync(cancellationToken);
-            }
+            var dot = driverId.LastIndexOf('.');
+            if (dot < 0 || !int.TryParse(driverId[(dot + 1)..], out var idx)) continue;
+            if (!namesByIndex.TryGetValue(idx, out var name)) continue;
+            driverParam.Value = driverId;
+            nameParam.Value = name;
+            await updateCmd.ExecuteNonQueryAsync(cancellationToken);
         }
     }
 
@@ -1681,14 +1710,13 @@ public sealed class SqliteMedallionSaveSnapshotSource(
         {
             var json = reader.GetString(0);
             if (string.IsNullOrWhiteSpace(json)) continue;
-            var arrays = JsonSerializer.Deserialize<Dictionary<string, List<string>>>(json, JsonOptions);
+            var arrays = JsonSerializer.Deserialize<Dictionary<string, Dictionary<string, string>>>(json, JsonOptions);
             if (arrays is null) continue;
             if (!arrays.TryGetValue("key", out var keys) || !arrays.TryGetValue("val", out var vals)) continue;
-            var count = Math.Min(keys.Count, vals.Count);
-            for (var i = 0; i < count; i++)
+            foreach (var (idx, keyName) in keys)
             {
-                if (!string.IsNullOrWhiteSpace(keys[i]) && !string.IsNullOrWhiteSpace(vals[i]))
-                    result.TryAdd(keys[i], vals[i]);
+                if (vals.TryGetValue(idx, out var valName) && !string.IsNullOrWhiteSpace(keyName) && !string.IsNullOrWhiteSpace(valName))
+                    result.TryAdd(keyName, valName);
             }
         }
         return result;

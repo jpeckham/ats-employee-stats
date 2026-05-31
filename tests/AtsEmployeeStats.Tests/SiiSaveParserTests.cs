@@ -31,8 +31,13 @@ public sealed class SiiSaveParserTests
         var garage = Assert.Single(document.Units, unit => unit.Type == "garage");
         Assert.Equal("garage.phoenix", garage.Id);
         Assert.Equal("phoenix", garage.GetValue("city"));
-        Assert.Equal(["12500", "-250"], garage.GetArray("profit_log"));
-        Assert.Equal(["driver.alice"], garage.GetArray("employees"));
+        var profitLog = garage.GetArray("profit_log");
+        Assert.Equal(2, profitLog.Count);
+        Assert.Equal("12500", profitLog["0"]);
+        Assert.Equal("-250", profitLog["1"]);
+        var employees = garage.GetArray("employees");
+        Assert.Single(employees);
+        Assert.Equal("driver.alice", employees["0"]);
 
         var driver = Assert.Single(document.Units, unit => unit.Type == "driver");
         Assert.Equal("Alice Ramirez", driver.GetValue("name"));

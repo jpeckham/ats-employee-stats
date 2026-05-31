@@ -61,7 +61,7 @@ public sealed class ScsReferenceDataIngestionTests : IDisposable
         await using var connection = OpenTestConnection();
         await connection.OpenAsync();
         Assert.Equal(
-            ("locale/en_us/driver_names.sii", "localization_db"),
+            ("locale/en_gb/driver_names.sii", "driver_names"),
             await QuerySingleAsync<(string, string)>(
                 connection,
                 """
@@ -241,14 +241,14 @@ public sealed class ScsReferenceDataIngestionTests : IDisposable
         public async Task ExtractAsync(string extractorPath, string archivePath, string outputDirectory, CancellationToken cancellationToken)
         {
             ArchivePath = archivePath;
-            var localeDirectory = Path.Combine(outputDirectory, "locale", "en_us");
+            var localeDirectory = Path.Combine(outputDirectory, "locale", "en_gb");
             Directory.CreateDirectory(localeDirectory);
             await File.WriteAllTextAsync(Path.Combine(localeDirectory, "driver_names.sii"), """
                 SiiNunit
                 {
-                localization_db : localization_db.driver_names {
-                  key[0]: "driver.23"
-                  val[0]: "Alice Ramirez"
+                driver_names : .driver.names {
+                  name[23]: "Alice Ramirez"
+                  name[24]: "+Lucy L."
                 }
                 }
                 """, cancellationToken);

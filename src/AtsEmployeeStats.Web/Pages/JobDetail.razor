@@ -82,7 +82,7 @@
                         <tr>
                             <td class="action-cell">@if (SelectedJob.DriverId is not null) { <NavLink class="button-link" href="@($"/companies/{Segment(SelectedCompany.Id)}/drivers/{Segment(SelectedJob.DriverId)}")">View</NavLink> }</td>
                             <td>Driver</td>
-                            <td>@(SelectedJob.DriverId ?? "-")</td>
+                            <td>@DashboardViewModel.GetDriverDisplayName(SelectedCompany, SelectedJob.DriverId)</td>
                         </tr>
                         <tr>
                             <td class="action-cell">@if (SelectedJob.TruckId is not null) { <NavLink class="button-link" href="@($"/companies/{Segment(SelectedCompany.Id)}/trucks/{Segment(SelectedJob.TruckId)}")">View</NavLink> }</td>

@@ -169,8 +169,8 @@
                                 </td>
                                 <td>@truck.DisplayName</td>
                                 <td>@Money(truck.Profit)</td>
-                                <td>@(truck.GarageId ?? "-")</td>
-                                <td>@(truck.DriverId ?? "-")</td>
+                                <td>@DashboardViewModel.GetGarageDisplayName(SelectedCompany, truck.GarageId)</td>
+                                <td>@DashboardViewModel.GetDriverDisplayName(SelectedCompany, truck.DriverId)</td>
                             </tr>
                         }
                     </tbody>

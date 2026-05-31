@@ -41,8 +41,8 @@
     {
         <section class="detail-summary">
             <div><span>Profit</span><strong>@Money(SelectedTruck.Profit)</strong></div>
-            <div><span>Garage</span><strong>@(SelectedTruck.GarageId ?? "-")</strong></div>
-            <div><span>Driver</span><strong>@(SelectedTruck.DriverId ?? "-")</strong></div>
+            <div><span>Garage</span><strong>@DashboardViewModel.GetGarageDisplayName(SelectedCompany, SelectedTruck.GarageId)</strong></div>
+            <div><span>Driver</span><strong>@DashboardViewModel.GetDriverDisplayName(SelectedCompany, SelectedTruck.DriverId)</strong></div>
             <div><span>Plate</span><strong>@(SelectedTruck.LicensePlate ?? "-")</strong></div>
         </section>
 

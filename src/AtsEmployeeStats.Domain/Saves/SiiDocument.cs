@@ -10,13 +10,16 @@ public sealed record SiiUnit(
     string Type,
     string Id,
     IReadOnlyDictionary<string, string> Values,
-    IReadOnlyDictionary<string, IReadOnlyList<string>> Arrays)
+    IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> Arrays)
 {
+    private static readonly IReadOnlyDictionary<string, string> EmptyArray =
+        new Dictionary<string, string>();
+
     public string? GetValue(string key) =>
         Values.TryGetValue(key, out var value) ? value : null;
 
-    public IReadOnlyList<string> GetArray(string key) =>
-        Arrays.TryGetValue(key, out var value) ? value : [];
+    public IReadOnlyDictionary<string, string> GetArray(string key) =>
+        Arrays.TryGetValue(key, out var value) ? value : EmptyArray;
 }
 
 public sealed record SaveSnapshot(

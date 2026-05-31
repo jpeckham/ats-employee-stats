@@ -527,12 +527,12 @@ public static partial class StatisticsProjection
 
         var trailerIds = player.GetArray("trailers");
         var logIds = player.GetArray("trailer_utilization_logs");
-        var count = Math.Min(trailerIds.Count, logIds.Count);
 
-        for (var i = 0; i < count; i++)
+        foreach (var (idx, rawTrailerId) in trailerIds)
         {
-            var trailerId = CleanSiiValue(trailerIds[i]);
-            var logId = CleanSiiValue(logIds[i]);
+            if (!logIds.TryGetValue(idx, out var rawLogId)) continue;
+            var trailerId = CleanSiiValue(rawTrailerId);
+            var logId = CleanSiiValue(rawLogId);
             if (trailerId is null || logId is null) continue;
             if (!unitsById.TryGetValue(logId, out var log)) continue;
             var jobCount = FirstIntValue(log, "total_transported_cargoes") ?? 0;
@@ -708,7 +708,7 @@ public static partial class StatisticsProjection
             var profitLogId = FirstKnownValue(driver, "profit_log");
             if (profitLogId is null || !unitsById.TryGetValue(profitLogId, out var profitLog))
                 continue;
-            foreach (var entryId in profitLog.GetArray("stats_data").Select(CleanSiiValue).Where(v => v is not null))
+            foreach (var entryId in profitLog.GetArray("stats_data").Values.Select(CleanSiiValue).Where(v => v is not null))
                 map.TryAdd(entryId!, driver.Id);
         }
         return map;
@@ -754,7 +754,7 @@ public static partial class StatisticsProjection
         foreach (var owner in owners)
         {
             foreach (var childId in arrayNames
-                .SelectMany(owner.GetArray)
+                .SelectMany(name => owner.GetArray(name).Values)
                 .Select(CleanSiiValue)
                 .Where(value => !string.IsNullOrWhiteSpace(value)))
             {
@@ -793,11 +793,11 @@ public static partial class StatisticsProjection
             }
 
             var garageTrucks = garage.GetArray("vehicles");
-            var count = Math.Min(garageDrivers.Count, garageTrucks.Count);
-            for (var index = 0; index < count; index++)
+            foreach (var (idx, rawDriverId) in garageDrivers)
             {
-                var driverId = CleanSiiValue(garageDrivers[index]);
-                var truckId = CleanSiiValue(garageTrucks[index]);
+                if (!garageTrucks.TryGetValue(idx, out var rawTruckId)) continue;
+                var driverId = CleanSiiValue(rawDriverId);
+                var truckId = CleanSiiValue(rawTruckId);
                 if (!string.IsNullOrWhiteSpace(driverId) && !string.IsNullOrWhiteSpace(truckId))
                 {
                     lookup.TryAdd(driverId, truckId);
@@ -811,7 +811,7 @@ public static partial class StatisticsProjection
     private static long SumProfitLog(SiiUnit unit, IReadOnlyDictionary<string, SiiUnit> unitsById)
     {
         var inlineProfit = unit.GetArray("profit_log")
-            .Select(CleanSiiValue)
+            .Values.Select(CleanSiiValue)
             .Where(value => value is not null)
             .Select(value => ParseLong(value!))
             .Sum();
@@ -828,7 +828,7 @@ public static partial class StatisticsProjection
 
         return profitLog
             .GetArray("stats_data")
-            .Select(CleanSiiValue)
+            .Values.Select(CleanSiiValue)
             .Where(entryId => entryId is not null && unitsById.ContainsKey(entryId))
             .Select(entryId => ProfitFromEntry(unitsById[entryId!]))
             .Sum();
@@ -866,7 +866,7 @@ public static partial class StatisticsProjection
             yield break;
         }
 
-        foreach (var entryId in profitLog.GetArray("stats_data").Select(CleanSiiValue).Where(value => value is not null))
+        foreach (var entryId in profitLog.GetArray("stats_data").Values.Select(CleanSiiValue).Where(value => value is not null))
         {
             if (!unitsById.TryGetValue(entryId!, out var entry) || !entry.TypeEquals("profit_log_entry"))
             {
@@ -904,8 +904,8 @@ public static partial class StatisticsProjection
         }
     }
 
-    private static string? GetArrayValue(IReadOnlyList<string> values, int index) =>
-        index >= 0 && index < values.Count ? CleanSiiValue(values[index]) : null;
+    private static string? GetArrayValue(IReadOnlyDictionary<string, string> values, int index) =>
+        values.TryGetValue(index.ToString(), out var v) ? CleanSiiValue(v) : null;
 
     private static string? CityFromCompany(string? companyId)
     {
@@ -1021,7 +1021,7 @@ public static partial class StatisticsProjection
 
     private static string? ExtractTruckDefinitionPath(SiiUnit truck, IReadOnlyDictionary<string, SiiUnit> unitsById)
     {
-        foreach (var accessoryId in truck.GetArray("accessories").Select(CleanSiiValue).Where(value => value is not null))
+        foreach (var accessoryId in truck.GetArray("accessories").Values.Select(CleanSiiValue).Where(value => value is not null))
         {
             if (!unitsById.TryGetValue(accessoryId!, out var accessory))
             {

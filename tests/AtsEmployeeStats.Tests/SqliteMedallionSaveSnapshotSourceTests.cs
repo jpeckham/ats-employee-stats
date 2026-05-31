@@ -124,7 +124,7 @@ public sealed class SqliteMedallionSaveSnapshotSourceTests : IDisposable
         Assert.Equal("garage", reader.GetString(0));
         Assert.Equal("garage.phoenix", reader.GetString(1));
         Assert.Contains("\"city\":\"phoenix\"", reader.GetString(2));
-        Assert.Contains("\"employees\":[\"driver.alice\"]", reader.GetString(3));
+        Assert.Contains("\"employees\":{\"0\":\"driver.alice\"}", reader.GetString(3));
         Assert.False(await reader.ReadAsync());
     }
 

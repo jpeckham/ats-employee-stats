@@ -35,7 +35,7 @@ public static partial class SiiSaveParser
                         values,
                         arrays.ToDictionary(
                             pair => pair.Key,
-                            pair => (IReadOnlyList<string>)ToIndexedList(pair.Value),
+                            pair => (IReadOnlyDictionary<string, string>)ToIndexedDict(pair.Value),
                             StringComparer.OrdinalIgnoreCase)));
 
                     currentType = null;
@@ -129,21 +129,8 @@ public static partial class SiiSaveParser
         return line;
     }
 
-    private static List<string> ToIndexedList(SortedDictionary<int, string> values)
-    {
-        if (values.Count == 0)
-        {
-            return [];
-        }
-
-        var indexed = Enumerable.Repeat(string.Empty, values.Keys.Max() + 1).ToList();
-        foreach (var (index, value) in values)
-        {
-            indexed[index] = value;
-        }
-
-        return indexed;
-    }
+    private static Dictionary<string, string> ToIndexedDict(SortedDictionary<int, string> values)
+        => values.ToDictionary(kv => kv.Key.ToString(), kv => kv.Value);
 
     private static string Unquote(string value)
     {
