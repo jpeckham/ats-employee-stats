@@ -1,12 +1,11 @@
-using AtsEmployeeStats.Application.Saves;
-using AtsEmployeeStats.Application.Statistics;
-using AtsEmployeeStats.Contracts;
+using AtsEmployeeStats.Application.Statistics.Queries;
+using AtsEmployeeStats.Api.Presentation;
 using Microsoft.AspNetCore.SignalR;
 
 namespace AtsEmployeeStats.Api;
 
 public sealed class SaveIngestionService(
-    StatisticsService statisticsService,
+    IStatisticsIngestUseCase ingestUseCase,
     IHubContext<StatisticsHub> hub) : IHostedService
 {
     private readonly CancellationTokenSource _cts = new();
@@ -26,16 +25,11 @@ public sealed class SaveIngestionService(
 
     private async Task RunIngestionAsync(CancellationToken cancellationToken)
     {
-        var progress = new Progress<SaveLoadProgress>(update =>
-        {
-            _ = hub.Clients.All.SendAsync(
-                "LoadingProgress",
-                DashboardProgressMapper.ToDashboardProgressDto(update));
-        });
+        var progress = new SignalRProgressPresenter(hub).AsProgress(cancellationToken);
 
         try
         {
-            await statisticsService.IngestAsync(cancellationToken, progress);
+            await ingestUseCase.IngestAsync(cancellationToken, progress);
         }
         catch
         {

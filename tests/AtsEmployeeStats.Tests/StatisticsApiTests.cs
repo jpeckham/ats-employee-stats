@@ -117,6 +117,66 @@ public sealed class StatisticsApiTests
     }
 
     [Fact]
+    public async Task Get_next_garage_city_recommendation_returns_best_eligible_unowned_city()
+    {
+        await using var factory = new TestApiFactory();
+        var client = factory.CreateClient();
+
+        var recommendation = await client.GetFromJsonAsync<GarageCityRecommendationDto>(
+            "/api/companies/desert-line/recommendations/next-garage-city");
+
+        Assert.NotNull(recommendation);
+        Assert.Equal("desert-line", recommendation.CompanyId);
+        Assert.Equal("denver", recommendation.CityId);
+        Assert.Equal("Denver", recommendation.DisplayName);
+        Assert.True(recommendation.ExpansionScore > 0);
+    }
+
+    [Fact]
+    public async Task Get_garage_trailer_recommendations_returns_best_trailer_types_for_garage()
+    {
+        await using var factory = new TestApiFactory();
+        var client = factory.CreateClient();
+
+        var recommendations = await client.GetFromJsonAsync<IReadOnlyList<TrailerRecommendationDto>>(
+            "/api/companies/desert-line/garages/garage.phoenix/recommendations/trailers");
+
+        Assert.NotNull(recommendations);
+        var recommendation = Assert.Single(recommendations);
+        Assert.Equal("desert-line", recommendation.CompanyId);
+        Assert.Equal("garage.phoenix", recommendation.GarageId);
+        Assert.Equal("trailer_def.scs.box.reefer", recommendation.TrailerType);
+        Assert.Equal(5500, recommendation.Profit);
+        Assert.Equal(2, recommendation.JobCount);
+        Assert.Equal(2750, recommendation.ProfitPerJob);
+    }
+
+    [Fact]
+    public async Task Get_underperformer_diagnoses_returns_json_collection()
+    {
+        await using var factory = new TestApiFactory();
+        var client = factory.CreateClient();
+
+        var diagnoses = await client.GetFromJsonAsync<IReadOnlyList<UnderperformerDiagnosisDto>>(
+            "/api/companies/desert-line/diagnostics/underperformers");
+
+        Assert.NotNull(diagnoses);
+        Assert.Empty(diagnoses);
+    }
+
+    [Fact]
+    public async Task Get_driver_skill_recommendations_returns_json_collection()
+    {
+        await using var factory = new TestApiFactory();
+        var client = factory.CreateClient();
+
+        var recommendations = await client.GetFromJsonAsync<IReadOnlyList<DriverSkillRecommendationDto>>(
+            "/api/companies/desert-line/recommendations/driver-skills");
+
+        Assert.NotNull(recommendations);
+    }
+
+    [Fact]
     public async Task Get_company_detail_returns_job_driver_and_trailer_ids()
     {
         await using var factory = new TestApiFactory();

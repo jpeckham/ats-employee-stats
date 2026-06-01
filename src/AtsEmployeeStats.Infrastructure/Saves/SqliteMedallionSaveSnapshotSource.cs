@@ -1390,8 +1390,22 @@ public sealed class SqliteMedallionSaveSnapshotSource(
                     ("$definition_path", truck.DefinitionPath));
             }
 
+            var missionCountByTrailer = company.Missions
+                .Where(mission => !string.IsNullOrWhiteSpace(mission.TrailerId))
+                .GroupBy(
+                    mission => mission.TrailerLicensePlate ?? mission.TrailerId!,
+                    StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(
+                    group => group.Key,
+                    group => group.Count(),
+                    StringComparer.OrdinalIgnoreCase);
+
             foreach (var trailer in company.Trailers)
             {
+                var jobCount = trailer.JobCount;
+                if (jobCount == 0)
+                    jobCount = missionCountByTrailer.GetValueOrDefault(trailer.LicensePlate ?? trailer.Id);
+
                 await ExecuteAsync(
                     connection,
                     """
@@ -1404,7 +1418,7 @@ public sealed class SqliteMedallionSaveSnapshotSource(
                     ("$trailer_id", trailer.Id),
                     ("$trailer_type", trailer.TrailerType),
                     ("$profit", trailer.Profit),
-                    ("$job_count", trailer.JobCount),
+                    ("$job_count", jobCount),
                     ("$body_type", trailer.BodyType),
                     ("$is_articulated", trailer.IsArticulated ? 1 : 0),
                     ("$garage_id", trailer.GarageId),

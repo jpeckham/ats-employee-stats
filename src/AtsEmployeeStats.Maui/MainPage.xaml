@@ -1,0 +1,332 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:maui="clr-namespace:AtsEmployeeStats.Maui"
+             x:Class="AtsEmployeeStats.Maui.MainPage"
+             Title="ATS Employee Stats"
+             BackgroundColor="{AppThemeBinding Light=#F6F7F9, Dark=#15171A}">
+    <Grid RowDefinitions="Auto,Auto,*"
+          Padding="24"
+          RowSpacing="16">
+        <Grid ColumnDefinitions="*,Auto"
+              ColumnSpacing="16">
+            <VerticalStackLayout Spacing="2">
+                <Label Text="ATS Employee Stats"
+                       FontSize="28"
+                       FontAttributes="Bold"
+                       TextColor="{AppThemeBinding Light=#20242A, Dark=#F2F4F7}" />
+                <Label Text="{Binding StatusText}"
+                       FontSize="14"
+                       TextColor="{AppThemeBinding Light=#5B6470, Dark=#B5BDC7}" />
+            </VerticalStackLayout>
+            <Button Grid.Column="1"
+                    Text="Refresh"
+                    Command="{Binding RefreshCommand}"
+                    WidthRequest="120"
+                    HeightRequest="40" />
+        </Grid>
+
+        <Border Grid.Row="1"
+                Stroke="{AppThemeBinding Light=#D9DEE6, Dark=#303640}"
+                StrokeThickness="1"
+                BackgroundColor="{AppThemeBinding Light=#FFFFFF, Dark=#20242A}"
+                Padding="12">
+            <Grid ColumnDefinitions="*,Auto,Auto,Auto"
+                  RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto"
+                  ColumnSpacing="16"
+                  RowSpacing="6">
+                <Label Text="{Binding CompanyCountText}"
+                       FontAttributes="Bold" />
+                <Label Grid.Column="1"
+                       Text="{Binding TotalProfitText}" />
+                <Label Grid.Column="2"
+                       Text="{Binding DriverCountText}" />
+                <ActivityIndicator Grid.Column="3"
+                                   IsRunning="{Binding IsBusy}"
+                                   IsVisible="{Binding IsBusy}"
+                                   WidthRequest="24"
+                                   HeightRequest="24" />
+                <Label Grid.Row="1"
+                       Grid.ColumnSpan="4"
+                       Text="{Binding RecommendationText}"
+                       FontSize="13"
+                       TextColor="{AppThemeBinding Light=#5B6470, Dark=#B5BDC7}" />
+                <Label Grid.Row="2"
+                       Grid.ColumnSpan="4"
+                       Text="{Binding TrailerRecommendationText}"
+                       FontSize="13"
+                       TextColor="{AppThemeBinding Light=#5B6470, Dark=#B5BDC7}" />
+                <Label Grid.Row="3"
+                       Grid.ColumnSpan="4"
+                       Text="{Binding DiagnosisText}"
+                       FontSize="13"
+                       TextColor="{AppThemeBinding Light=#5B6470, Dark=#B5BDC7}" />
+                <Label Grid.Row="4"
+                       Grid.ColumnSpan="4"
+                       Text="{Binding DriverSkillRecommendationText}"
+                       FontSize="13"
+                       TextColor="{AppThemeBinding Light=#5B6470, Dark=#B5BDC7}" />
+                <Label Grid.Row="5"
+                       Grid.ColumnSpan="4"
+                       Text="{Binding OverallProgressText}"
+                       IsVisible="{Binding IsProgressVisible}"
+                       FontSize="12"
+                       TextColor="{AppThemeBinding Light=#5B6470, Dark=#B5BDC7}" />
+                <ProgressBar Grid.Row="6"
+                             Grid.ColumnSpan="4"
+                             Progress="{Binding OverallProgress}"
+                             IsVisible="{Binding IsProgressVisible}" />
+                <Label Grid.Row="7"
+                       Grid.ColumnSpan="4"
+                       Text="{Binding CurrentFileProgressText}"
+                       IsVisible="{Binding IsProgressVisible}"
+                       FontSize="12"
+                       TextColor="{AppThemeBinding Light=#5B6470, Dark=#B5BDC7}" />
+                <ProgressBar Grid.Row="8"
+                             Grid.ColumnSpan="4"
+                             Progress="{Binding CurrentFileProgress}"
+                             IsVisible="{Binding IsProgressVisible}" />
+            </Grid>
+        </Border>
+
+        <Grid Grid.Row="2"
+              ColumnDefinitions="1.05*,1.95*"
+              ColumnSpacing="16">
+            <CollectionView ItemsSource="{Binding Companies}"
+                            EmptyView="No company statistics loaded.">
+                <CollectionView.ItemTemplate>
+                    <DataTemplate x:DataType="maui:CompanySummaryItem">
+                        <Border Stroke="{AppThemeBinding Light=#D9DEE6, Dark=#303640}"
+                                StrokeThickness="1"
+                                BackgroundColor="{AppThemeBinding Light=#FFFFFF, Dark=#20242A}"
+                                Padding="14"
+                                Margin="0,0,0,10">
+                            <Grid ColumnDefinitions="2*,Auto"
+                                  RowDefinitions="Auto,Auto"
+                                  ColumnSpacing="12"
+                                  RowSpacing="8">
+                                <VerticalStackLayout Spacing="2">
+                                    <Label Text="{Binding DisplayName}"
+                                           FontSize="18"
+                                           FontAttributes="Bold" />
+                                    <Label Text="{Binding Id}"
+                                           FontSize="12"
+                                           TextColor="{AppThemeBinding Light=#6A737D, Dark=#AAB2BD}" />
+                                </VerticalStackLayout>
+                                <Button Grid.Column="1"
+                                        Text="View"
+                                        Command="{Binding ViewCommand}"
+                                        CommandParameter="{Binding Id}"
+                                        WidthRequest="78"
+                                        HeightRequest="36" />
+                                <Grid Grid.Row="1"
+                                      Grid.ColumnSpan="2"
+                                      ColumnDefinitions="*,*,*"
+                                      ColumnSpacing="12">
+                                    <Label Text="{Binding ProfitText}"
+                                           FontSize="13" />
+                                    <Label Grid.Column="1"
+                                           Text="{Binding DriverCountText}"
+                                           FontSize="13"
+                                           HorizontalTextAlignment="Center" />
+                                    <Label Grid.Column="2"
+                                           Text="{Binding AssetsText}"
+                                           FontSize="13"
+                                           HorizontalTextAlignment="End" />
+                                </Grid>
+                            </Grid>
+                        </Border>
+                    </DataTemplate>
+                </CollectionView.ItemTemplate>
+            </CollectionView>
+
+            <ScrollView Grid.Column="1">
+                <VerticalStackLayout Spacing="12">
+                    <Border Stroke="{AppThemeBinding Light=#D9DEE6, Dark=#303640}"
+                            StrokeThickness="1"
+                            BackgroundColor="{AppThemeBinding Light=#FFFFFF, Dark=#20242A}"
+                            Padding="16"
+                            IsVisible="{Binding HasSelectedCompany}">
+                        <VerticalStackLayout Spacing="14">
+                            <Grid ColumnDefinitions="*,Auto"
+                                  ColumnSpacing="16">
+                                <VerticalStackLayout Spacing="2">
+                                    <Label Text="{Binding SelectedCompanyTitle}"
+                                           FontSize="22"
+                                           FontAttributes="Bold" />
+                                    <Label Text="{Binding SelectedCompanySubtitle}"
+                                           FontSize="13"
+                                           TextColor="{AppThemeBinding Light=#6A737D, Dark=#AAB2BD}" />
+                                </VerticalStackLayout>
+                                <Label Grid.Column="1"
+                                       Text="{Binding SelectedCompanyProfitText}"
+                                       FontSize="20"
+                                       FontAttributes="Bold"
+                                       HorizontalTextAlignment="End"
+                                       VerticalTextAlignment="Center" />
+                            </Grid>
+
+                            <HorizontalStackLayout Spacing="18"
+                                                   BindableLayout.ItemsSource="{Binding SelectedCompanyMetrics}">
+                                <BindableLayout.ItemTemplate>
+                                    <DataTemplate x:DataType="maui:DetailMetricItem">
+                                        <VerticalStackLayout Spacing="2"
+                                                             WidthRequest="96">
+                                            <Label Text="{Binding Value}"
+                                                   FontAttributes="Bold"
+                                                   HorizontalTextAlignment="Center" />
+                                            <Label Text="{Binding Label}"
+                                                   FontSize="12"
+                                                   TextColor="{AppThemeBinding Light=#6A737D, Dark=#AAB2BD}"
+                                                   HorizontalTextAlignment="Center" />
+                                        </VerticalStackLayout>
+                                    </DataTemplate>
+                                </BindableLayout.ItemTemplate>
+                            </HorizontalStackLayout>
+
+                            <Label Text="Garages"
+                                   FontAttributes="Bold" />
+                            <VerticalStackLayout Spacing="8"
+                                                 BindableLayout.ItemsSource="{Binding SelectedGarages}">
+                                <BindableLayout.ItemTemplate>
+                                    <DataTemplate x:DataType="maui:DetailRowItem">
+                                        <Grid ColumnDefinitions="1.2*,*,Auto"
+                                              RowDefinitions="Auto,Auto"
+                                              ColumnSpacing="10">
+                                            <Label Text="{Binding Name}"
+                                                   FontAttributes="Bold" />
+                                            <Label Grid.Column="1"
+                                                   Text="{Binding PrimaryText}" />
+                                            <Label Grid.Column="2"
+                                                   Text="{Binding MetaText}"
+                                                   TextColor="{AppThemeBinding Light=#6A737D, Dark=#AAB2BD}" />
+                                            <Label Grid.Row="1"
+                                                   Grid.ColumnSpan="3"
+                                                   Text="{Binding SecondaryText}"
+                                                   FontSize="12"
+                                                   TextColor="{AppThemeBinding Light=#6A737D, Dark=#AAB2BD}" />
+                                        </Grid>
+                                    </DataTemplate>
+                                </BindableLayout.ItemTemplate>
+                            </VerticalStackLayout>
+
+                            <Label Text="Drivers"
+                                   FontAttributes="Bold" />
+                            <VerticalStackLayout Spacing="8"
+                                                 BindableLayout.ItemsSource="{Binding SelectedDrivers}">
+                                <BindableLayout.ItemTemplate>
+                                    <DataTemplate x:DataType="maui:DetailRowItem">
+                                        <Grid ColumnDefinitions="1.2*,*,Auto"
+                                              RowDefinitions="Auto,Auto"
+                                              ColumnSpacing="10">
+                                            <Label Text="{Binding Name}"
+                                                   FontAttributes="Bold" />
+                                            <Label Grid.Column="1"
+                                                   Text="{Binding PrimaryText}" />
+                                            <Label Grid.Column="2"
+                                                   Text="{Binding MetaText}"
+                                                   TextColor="{AppThemeBinding Light=#6A737D, Dark=#AAB2BD}" />
+                                            <Label Grid.Row="1"
+                                                   Grid.ColumnSpan="3"
+                                                   Text="{Binding SecondaryText}"
+                                                   FontSize="12"
+                                                   TextColor="{AppThemeBinding Light=#6A737D, Dark=#AAB2BD}" />
+                                        </Grid>
+                                    </DataTemplate>
+                                </BindableLayout.ItemTemplate>
+                            </VerticalStackLayout>
+
+                            <Label Text="Trucks"
+                                   FontAttributes="Bold" />
+                            <VerticalStackLayout Spacing="8"
+                                                 BindableLayout.ItemsSource="{Binding SelectedTrucks}">
+                                <BindableLayout.ItemTemplate>
+                                    <DataTemplate x:DataType="maui:DetailRowItem">
+                                        <Grid ColumnDefinitions="1.2*,*,Auto"
+                                              RowDefinitions="Auto,Auto"
+                                              ColumnSpacing="10">
+                                            <Label Text="{Binding Name}"
+                                                   FontAttributes="Bold" />
+                                            <Label Grid.Column="1"
+                                                   Text="{Binding PrimaryText}" />
+                                            <Label Grid.Column="2"
+                                                   Text="{Binding MetaText}"
+                                                   TextColor="{AppThemeBinding Light=#6A737D, Dark=#AAB2BD}" />
+                                            <Label Grid.Row="1"
+                                                   Grid.ColumnSpan="3"
+                                                   Text="{Binding SecondaryText}"
+                                                   FontSize="12"
+                                                   TextColor="{AppThemeBinding Light=#6A737D, Dark=#AAB2BD}" />
+                                        </Grid>
+                                    </DataTemplate>
+                                </BindableLayout.ItemTemplate>
+                            </VerticalStackLayout>
+
+                            <Label Text="Trailers"
+                                   FontAttributes="Bold" />
+                            <VerticalStackLayout Spacing="8"
+                                                 BindableLayout.ItemsSource="{Binding SelectedTrailers}">
+                                <BindableLayout.ItemTemplate>
+                                    <DataTemplate x:DataType="maui:DetailRowItem">
+                                        <Grid ColumnDefinitions="1.2*,*,Auto"
+                                              RowDefinitions="Auto,Auto"
+                                              ColumnSpacing="10">
+                                            <Label Text="{Binding Name}"
+                                                   FontAttributes="Bold" />
+                                            <Label Grid.Column="1"
+                                                   Text="{Binding PrimaryText}" />
+                                            <Label Grid.Column="2"
+                                                   Text="{Binding MetaText}"
+                                                   TextColor="{AppThemeBinding Light=#6A737D, Dark=#AAB2BD}" />
+                                            <Label Grid.Row="1"
+                                                   Grid.ColumnSpan="3"
+                                                   Text="{Binding SecondaryText}"
+                                                   FontSize="12"
+                                                   TextColor="{AppThemeBinding Light=#6A737D, Dark=#AAB2BD}" />
+                                        </Grid>
+                                    </DataTemplate>
+                                </BindableLayout.ItemTemplate>
+                            </VerticalStackLayout>
+
+                            <Label Text="Recent jobs"
+                                   FontAttributes="Bold" />
+                            <VerticalStackLayout Spacing="8"
+                                                 BindableLayout.ItemsSource="{Binding SelectedRecentJobs}">
+                                <BindableLayout.ItemTemplate>
+                                    <DataTemplate x:DataType="maui:DetailRowItem">
+                                        <Grid ColumnDefinitions="1.2*,*,Auto"
+                                              RowDefinitions="Auto,Auto"
+                                              ColumnSpacing="10">
+                                            <Label Text="{Binding Name}"
+                                                   FontAttributes="Bold" />
+                                            <Label Grid.Column="1"
+                                                   Text="{Binding PrimaryText}" />
+                                            <Label Grid.Column="2"
+                                                   Text="{Binding MetaText}"
+                                                   TextColor="{AppThemeBinding Light=#6A737D, Dark=#AAB2BD}" />
+                                            <Label Grid.Row="1"
+                                                   Grid.ColumnSpan="3"
+                                                   Text="{Binding SecondaryText}"
+                                                   FontSize="12"
+                                                   TextColor="{AppThemeBinding Light=#6A737D, Dark=#AAB2BD}" />
+                                        </Grid>
+                                    </DataTemplate>
+                                </BindableLayout.ItemTemplate>
+                            </VerticalStackLayout>
+                        </VerticalStackLayout>
+                    </Border>
+
+                    <Border Stroke="{AppThemeBinding Light=#D9DEE6, Dark=#303640}"
+                            StrokeThickness="1"
+                            BackgroundColor="{AppThemeBinding Light=#FFFFFF, Dark=#20242A}"
+                            Padding="16"
+                            IsVisible="{Binding HasNoSelectedCompany}">
+                        <Label Text="No company selected."
+                               FontSize="16"
+                               TextColor="{AppThemeBinding Light=#5B6470, Dark=#B5BDC7}" />
+                    </Border>
+                </VerticalStackLayout>
+            </ScrollView>
+        </Grid>
+    </Grid>
+</ContentPage>

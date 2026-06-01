@@ -278,3 +278,21 @@ tbody tr:hover {
     color: var(--muted);
     font-variant-numeric: tabular-nums;
 }
+
+#blazor-error-ui {
+    display: none;
+    position: fixed;
+    inset: auto 1rem 1rem 1rem;
+    z-index: 1000;
+    padding: 0.75rem 1rem;
+    border: 1px solid #b42318;
+    background: #fee4e2;
+    color: #7a271a;
+}
+
+#blazor-error-ui .reload,
+#blazor-error-ui .dismiss {
+    margin-left: 0.75rem;
+    color: inherit;
+    font-weight: 700;
+}

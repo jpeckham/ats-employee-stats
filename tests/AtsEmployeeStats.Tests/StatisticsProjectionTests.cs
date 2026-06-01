@@ -1379,4 +1379,58 @@ public sealed class StatisticsProjectionTests
         Assert.Equal(2, missions.Count);
         Assert.All(missions, m => Assert.Equal("driver.ai.1", m.DriverId));
     }
+
+    [Fact]
+    public void Build_attributes_driver_profit_log_jobs_to_assigned_truck_when_entry_has_no_truck()
+    {
+        var snapshot = new SaveSnapshot(
+            "profiles/save/current/game.sii",
+            new DateTimeOffset(2026, 5, 31, 12, 0, 0, TimeSpan.Zero),
+            SiiSaveParser.Parse("""
+                SiiNunit
+                {
+                player : player {
+                  company_name: "Desert Line"
+                }
+
+                garage : garage.phoenix {
+                  city: phoenix
+                  employees[0]: driver.ai.1
+                  vehicles[0]: truck.1
+                }
+
+                driver_ai : driver.ai.1 {
+                  profit_log: profit_log.1
+                }
+
+                profit_log : profit_log.1 {
+                  stats_data[0]: profit.entry.1
+                }
+
+                profit_log_entry : profit.entry.1 {
+                  revenue: 3000
+                  cargo: cargo.medicine
+                  source_city: phoenix
+                  destination_city: denver
+                  timestamp_day: 100
+                }
+
+                vehicle : truck.1 {
+                  license_plate: "T-1"
+                }
+                }
+                """));
+
+        var company = Assert.Single(StatisticsProjection.Build([snapshot]).Companies);
+
+        var truck = Assert.Single(company.Trucks);
+        Assert.Equal("truck.1", truck.Id);
+        Assert.Equal("driver.ai.1", truck.DriverId);
+        Assert.Equal(3000, truck.Profit);
+
+        var mission = Assert.Single(company.Missions);
+        Assert.Equal("driver.ai.1", mission.DriverId);
+        Assert.Equal("truck.1", mission.TruckId);
+        Assert.Equal(3000, mission.Profit);
+    }
 }

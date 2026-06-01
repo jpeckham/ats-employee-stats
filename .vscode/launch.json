@@ -23,6 +23,17 @@
         "action": "openExternally",
         "pattern": "\\bNow listening on:\\s+(https?://\\S+)"
       }
+    },
+    {
+      "name": "ATS Employee Stats MAUI (Windows)",
+      "type": "coreclr",
+      "request": "launch",
+      "program": "${workspaceFolder}/src/AtsEmployeeStats.Maui/bin/Debug/net10.0-windows10.0.19041.0/win-x64/AtsEmployeeStats.Maui.exe",
+      "args": [],
+      "cwd": "${workspaceFolder}/src/AtsEmployeeStats.Maui/bin/Debug/net10.0-windows10.0.19041.0/win-x64",
+      "console": "integratedTerminal",
+      "stopAtEntry": false,
+      "preLaunchTask": "build maui windows"
     }
   ]
 }

@@ -1,7 +1,11 @@
 using AtsEmployeeStats.Application.Saves;
 using AtsEmployeeStats.Application.Statistics;
+using AtsEmployeeStats.Application.Statistics.Queries;
+using AtsEmployeeStats.Api.Controllers;
+using AtsEmployeeStats.Api.Requests;
 using AtsEmployeeStats.Contracts;
 using AtsEmployeeStats.Infrastructure.Saves;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
@@ -21,7 +25,7 @@ public partial class Program
             .PostConfigure(options =>
             {
                 options.SaveRoot = string.IsNullOrWhiteSpace(options.SaveRoot)
-                    ? DefaultAtsSaveRoot.Find() ?? Environment.CurrentDirectory
+                    ? FindDefaultSaveRoot() ?? Environment.CurrentDirectory
                     : options.SaveRoot;
                 options.DatabasePath = string.IsNullOrWhiteSpace(options.DatabasePath)
                     ? Path.Combine(CommandLineDefaults.DefaultDataDirectory(), "ats-employee-stats.db")
@@ -45,6 +49,23 @@ public partial class Program
         builder.Services.TryAddSingleton<IStatisticsIngestor>(sp =>
             sp.GetRequiredService<SqliteMedallionSaveSnapshotSource>());
         builder.Services.AddSingleton<StatisticsService>();
+        builder.Services.AddSingleton<IStatisticsIngestUseCase, StatisticsIngestUseCase>();
+        builder.Services.AddSingleton<IStatisticsDashboardUseCases, StatisticsDashboardUseCases>();
+        builder.Services.AddSingleton<IStatisticsReloadUseCase, StatisticsReloadUseCase>();
+        builder.Services.AddSingleton<IRecommendNextGarageCityUseCase, RecommendNextGarageCityUseCase>();
+        builder.Services.AddSingleton<IRecommendTrailersForGarageUseCase, RecommendTrailersForGarageUseCase>();
+        builder.Services.AddSingleton<IRecommendDriverSkillsUseCase, RecommendDriverSkillsUseCase>();
+        builder.Services.AddSingleton<IDiagnoseUnderperformersUseCase, DiagnoseUnderperformersUseCase>();
+        builder.Services.AddSingleton<IApiRequestMapper, ApiRequestMapper>();
+        builder.Services.AddScoped<StatisticsController>();
+        builder.Services.AddScoped<CompaniesController>();
+        builder.Services.AddScoped<DriversController>();
+        builder.Services.AddScoped<GaragesController>();
+        builder.Services.AddScoped<TrucksController>();
+        builder.Services.AddScoped<TrailersController>();
+        builder.Services.AddScoped<JobsController>();
+        builder.Services.AddScoped<CitiesController>();
+        builder.Services.AddScoped<CompanyPerformanceController>();
         builder.Services.AddHostedService<SaveIngestionService>();
 
         var app = builder.Build();
@@ -55,163 +76,95 @@ public partial class Program
         app.MapGet("/api/config", (IOptions<StatisticsApiOptions> options) =>
             new DashboardConfigDto(options.Value.SaveRoot, options.Value.HistoryDays));
 
-        app.MapGet("/api/statistics", async (
-            int? fromDay,
-            int? toDay,
-            [AsParameters] CollectionSortDto sort,
-            StatisticsService service,
-            IHubContext<StatisticsHub> hub,
+        app.MapGet("/api/statistics", (
+            [AsParameters] StatisticsRouteRequest request,
+            StatisticsController controller,
             CancellationToken cancellationToken) =>
-        {
-            var progress = BuildSignalRProgress(hub, cancellationToken);
-            var statistics = await service.LoadAsync(cancellationToken, progress);
-            return StatisticsDashboardMapper.ToDashboardDto(statistics, fromDay ?? 0, toDay, sort);
-        });
+            controller.GetStatisticsAsync(request, cancellationToken));
 
-        app.MapGet("/api/companies", async (
-            int? fromDay,
-            int? toDay,
-            StatisticsService service,
-            IHubContext<StatisticsHub> hub,
+        app.MapGet("/api/companies", (
+            [AsParameters] CompaniesRouteRequest request,
+            CompaniesController controller,
             CancellationToken cancellationToken) =>
-        {
-            var dto = await LoadDashboardAsync(fromDay, toDay, service, hub, cancellationToken);
-            return Results.Ok(dto.Companies);
-        });
+            controller.ListCompaniesAsync(request, cancellationToken));
 
-        app.MapGet("/api/companies/{companyId}", async (
-            string companyId,
-            int? fromDay,
-            int? toDay,
-            StatisticsService service,
-            IHubContext<StatisticsHub> hub,
+        app.MapGet("/api/companies/{companyId}", (
+            [AsParameters] CompanyRouteRequest request,
+            CompaniesController controller,
             CancellationToken cancellationToken) =>
-        {
-            var dto = await LoadDashboardAsync(fromDay, toDay, service, hub, cancellationToken);
-            var company = FindCompany(dto, companyId);
-            return company is null ? Results.NotFound() : Results.Ok(company);
-        });
+            controller.GetCompanyAsync(request, cancellationToken));
 
-        app.MapGet("/api/companies/{companyId}/drivers/{driverId}", async (
-            string companyId,
-            string driverId,
-            int? fromDay,
-            int? toDay,
-            StatisticsService service,
-            IHubContext<StatisticsHub> hub,
+        app.MapGet("/api/companies/{companyId}/drivers/{driverId}", (
+            [AsParameters] DriverRouteRequest request,
+            DriversController controller,
             CancellationToken cancellationToken) =>
-        {
-            var company = FindCompany(await LoadDashboardAsync(fromDay, toDay, service, hub, cancellationToken), companyId);
-            var driver = company?.Drivers.FirstOrDefault(driver => IdEquals(driver.Id, driverId));
-            return driver is null ? Results.NotFound() : Results.Ok(driver);
-        });
+            controller.GetDriverAsync(request, cancellationToken));
 
-        app.MapGet("/api/companies/{companyId}/garages/{garageId}", async (
-            string companyId,
-            string garageId,
-            int? fromDay,
-            int? toDay,
-            StatisticsService service,
-            IHubContext<StatisticsHub> hub,
+        app.MapGet("/api/companies/{companyId}/garages/{garageId}", (
+            [AsParameters] GarageRouteRequest request,
+            GaragesController controller,
             CancellationToken cancellationToken) =>
-        {
-            var company = FindCompany(await LoadDashboardAsync(fromDay, toDay, service, hub, cancellationToken), companyId);
-            var garage = company?.Garages.FirstOrDefault(garage => IdEquals(garage.Id, garageId));
-            return garage is null ? Results.NotFound() : Results.Ok(garage);
-        });
+            controller.GetGarageAsync(request, cancellationToken));
 
-        app.MapGet("/api/companies/{companyId}/trucks/{truckId}", async (
-            string companyId,
-            string truckId,
-            int? fromDay,
-            int? toDay,
-            StatisticsService service,
-            IHubContext<StatisticsHub> hub,
+        app.MapGet("/api/companies/{companyId}/trucks/{truckId}", (
+            [AsParameters] TruckRouteRequest request,
+            TrucksController controller,
             CancellationToken cancellationToken) =>
-        {
-            var company = FindCompany(await LoadDashboardAsync(fromDay, toDay, service, hub, cancellationToken), companyId);
-            var truck = company?.Trucks.FirstOrDefault(truck => IdEquals(truck.Id, truckId));
-            return truck is null ? Results.NotFound() : Results.Ok(truck);
-        });
+            controller.GetTruckAsync(request, cancellationToken));
 
-        app.MapGet("/api/companies/{companyId}/trailers/{licensePlate}", async (
-            string companyId,
-            string licensePlate,
-            int? fromDay,
-            int? toDay,
-            StatisticsService service,
-            IHubContext<StatisticsHub> hub,
+        app.MapGet("/api/companies/{companyId}/trailers/{licensePlate}", (
+            [AsParameters] TrailerRouteRequest request,
+            TrailersController controller,
             CancellationToken cancellationToken) =>
-        {
-            var company = FindCompany(await LoadDashboardAsync(fromDay, toDay, service, hub, cancellationToken), companyId);
-            var trailer = company?.Trailers?.FirstOrDefault(trailer => IdEquals(trailer.LicensePlate, licensePlate));
-            return trailer is null ? Results.NotFound() : Results.Ok(trailer);
-        });
+            controller.GetTrailerAsync(request, cancellationToken));
 
-        app.MapGet("/api/companies/{companyId}/jobs/{jobId}", async (
-            string companyId,
-            string jobId,
-            int? fromDay,
-            int? toDay,
-            StatisticsService service,
-            IHubContext<StatisticsHub> hub,
+        app.MapGet("/api/companies/{companyId}/jobs/{jobId}", (
+            [AsParameters] JobRouteRequest request,
+            JobsController controller,
             CancellationToken cancellationToken) =>
-        {
-            var company = FindCompany(await LoadDashboardAsync(fromDay, toDay, service, hub, cancellationToken), companyId);
-            var job = company?.Missions.FirstOrDefault(job => IdEquals(job.Id, jobId));
-            return job is null ? Results.NotFound() : Results.Ok(job);
-        });
+            controller.GetJobAsync(request, cancellationToken));
 
-        app.MapGet("/api/companies/{companyId}/cities/{cityId}", async (
-            string companyId,
-            string cityId,
-            int? fromDay,
-            int? toDay,
-            StatisticsService service,
-            IHubContext<StatisticsHub> hub,
+        app.MapGet("/api/companies/{companyId}/cities/{cityId}", (
+            [AsParameters] CityRouteRequest request,
+            CitiesController controller,
             CancellationToken cancellationToken) =>
-        {
-            var company = FindCompany(await LoadDashboardAsync(fromDay, toDay, service, hub, cancellationToken), companyId);
-            var city = company?.Cities?.FirstOrDefault(city => IdEquals(city.Id, cityId));
-            return city is null ? Results.NotFound() : Results.Ok(city);
-        });
+            controller.GetCityAsync(request, cancellationToken));
 
-        app.MapGet("/api/companies/{companyId}/routes/{originCityId}/{destinationCityId}", async (
-            string companyId,
-            string originCityId,
-            string destinationCityId,
-            int? fromDay,
-            int? toDay,
-            StatisticsService service,
-            IHubContext<StatisticsHub> hub,
+        app.MapGet("/api/companies/{companyId}/routes/{originCityId}/{destinationCityId}", (
+            [AsParameters] RouteRouteRequest request,
+            CitiesController controller,
             CancellationToken cancellationToken) =>
-        {
-            var company = FindCompany(await LoadDashboardAsync(fromDay, toDay, service, hub, cancellationToken), companyId);
-            var route = company?.Routes?.FirstOrDefault(route =>
-                IdEquals(route.OriginCityId, originCityId) &&
-                IdEquals(route.DestinationCityId, destinationCityId));
-            return route is null ? Results.NotFound() : Results.Ok(route);
-        });
+            controller.GetRouteAsync(request, cancellationToken));
 
-        app.MapPost("/api/statistics/reload", async (
-            int? fromDay,
-            int? toDay,
-            [AsParameters] CollectionSortDto sort,
-            StatisticsService service,
-            IHubContext<StatisticsHub> hub,
+        app.MapGet("/api/companies/{companyId}/recommendations/next-garage-city", (
+            [AsParameters] RecommendationRouteRequest request,
+            GaragesController controller,
             CancellationToken cancellationToken) =>
-        {
-            await hub.Clients.All.SendAsync(
-                "StatusChanged",
-                new DashboardStatusDto("Reloading saves...", IsError: false),
-                cancellationToken);
-            var progress = BuildSignalRProgress(hub, cancellationToken);
-            await service.IngestAsync(cancellationToken, progress, force: true);
-            var statistics = await service.LoadAsync(cancellationToken, progress);
-            var dto = StatisticsDashboardMapper.ToDashboardDto(statistics, fromDay ?? 0, toDay, sort);
-            await hub.Clients.All.SendAsync("StatisticsUpdated", dto, cancellationToken);
-            return Results.Ok(dto);
-        });
+            controller.RecommendNextGarageCityAsync(request, cancellationToken));
+
+        app.MapGet("/api/companies/{companyId}/garages/{garageId}/recommendations/trailers", (
+            [AsParameters] TrailerRecommendationRouteRequest request,
+            TrailersController controller,
+            CancellationToken cancellationToken) =>
+            controller.RecommendTrailersForGarageAsync(request, cancellationToken));
+
+        app.MapGet("/api/companies/{companyId}/diagnostics/underperformers", (
+            [AsParameters] RecommendationRouteRequest request,
+            CompanyPerformanceController controller,
+            CancellationToken cancellationToken) =>
+            controller.DiagnoseUnderperformersAsync(request, cancellationToken));
+
+        app.MapGet("/api/companies/{companyId}/recommendations/driver-skills", (
+            [AsParameters] RecommendationRouteRequest request,
+            DriversController controller,
+            CancellationToken cancellationToken) =>
+            controller.RecommendDriverSkillsAsync(request, cancellationToken));
+
+        app.MapPost("/api/statistics/reload", (
+            [AsParameters] StatisticsRouteRequest request,
+            StatisticsController controller,
+            CancellationToken cancellationToken) =>
+            controller.ReloadAsync(request, cancellationToken));
 
         app.MapHub<StatisticsHub>("/hubs/statistics");
         app.MapFallbackToFile("index.html");
@@ -219,33 +172,9 @@ public partial class Program
         app.Run();
     }
 
-    private static Progress<SaveLoadProgress> BuildSignalRProgress(
-        IHubContext<StatisticsHub> hub,
-        CancellationToken cancellationToken) =>
-        new(update =>
-        {
-            _ = hub.Clients.All.SendAsync(
-                "LoadingProgress",
-                DashboardProgressMapper.ToDashboardProgressDto(update),
-                cancellationToken);
-        });
-
-    private static async Task<DashboardStatisticsDto> LoadDashboardAsync(
-        int? fromDay,
-        int? toDay,
-        StatisticsService service,
-        IHubContext<StatisticsHub> hub,
-        CancellationToken cancellationToken,
-        CollectionSortDto? sort = null)
-    {
-        var progress = BuildSignalRProgress(hub, cancellationToken);
-        var statistics = await service.LoadAsync(cancellationToken, progress);
-        return StatisticsDashboardMapper.ToDashboardDto(statistics, fromDay ?? 0, toDay, sort);
-    }
-
-    private static CompanyDto? FindCompany(DashboardStatisticsDto statistics, string companyId) =>
-        statistics.Companies.FirstOrDefault(company => IdEquals(company.Id, companyId));
-
-    private static bool IdEquals(string? left, string? right) =>
-        StringComparer.OrdinalIgnoreCase.Equals(left, right);
+    private static string? FindDefaultSaveRoot() =>
+        new GameSaveDiscoveryUseCase(new LocalGameSaveDiscovery())
+            .FindFirstSaveRootAsync(GameSaveKind.AmericanTruckSimulator, CancellationToken.None)
+            .GetAwaiter()
+            .GetResult();
 }

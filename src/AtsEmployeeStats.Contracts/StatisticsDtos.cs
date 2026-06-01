@@ -119,6 +119,42 @@ public sealed record RouteDto(
     decimal ProfitPerMile,
     decimal ReturnCoverageRatio);
 
+public sealed record GarageCityRecommendationDto(
+    string CompanyId,
+    string CityId,
+    string DisplayName,
+    decimal ExpansionScore,
+    long BidirectionalProfit,
+    int VisitCount,
+    string Reason);
+
+public sealed record TrailerRecommendationDto(
+    string CompanyId,
+    string GarageId,
+    string TrailerType,
+    long Profit,
+    int JobCount,
+    long ProfitPerJob,
+    string Reason);
+
+public sealed record UnderperformerDiagnosisDto(
+    string CompanyId,
+    string EntityKind,
+    string EntityId,
+    string DisplayName,
+    long Profit,
+    long ProfitPerDay,
+    int JobCount,
+    string Reason);
+
+public sealed record DriverSkillRecommendationDto(
+    string CompanyId,
+    string DriverId,
+    string DriverName,
+    string SkillName,
+    decimal Score,
+    string Reason);
+
 public sealed record EntityTrendPointDto(
     int GameDay,
     DateTimeOffset? SaveTimeUtc,

@@ -99,17 +99,26 @@ public static partial class StatisticsProjection
             .ThenBy(driver => driver.DisplayName, StringComparer.OrdinalIgnoreCase)
             .ToList();
 
+        var driverProfitByTruck = driverStats
+            .Where(driver => !string.IsNullOrWhiteSpace(driver.TruckId))
+            .GroupBy(driver => driver.TruckId!, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => group.Sum(driver => driver.Profit), StringComparer.OrdinalIgnoreCase);
+
         var truckStats = trucks
             .Select(truck =>
             {
                 var licensePlate = CleanLicensePlate(FirstKnownValue(truck, "license_plate", "name"));
                 var definitionPath = ExtractTruckDefinitionPath(truck, unitsById);
                 var modelName = FormatTruckModelName(definitionPath);
+                var vehicleProfit = SumProfitLog(truck, unitsById);
+                var profit = vehicleProfit != 0
+                    ? vehicleProfit
+                    : driverProfitByTruck.GetValueOrDefault(truck.Id);
 
                 return new TruckStatistic(
                     truck.Id,
                     BuildTruckDisplayName(truck.Id, modelName, licensePlate),
-                    SumProfitLog(truck, unitsById),
+                    profit,
                     truckToGarage.GetValueOrDefault(truck.Id),
                     truckToDriver.GetValueOrDefault(truck.Id),
                     licensePlate,
@@ -297,9 +306,20 @@ public static partial class StatisticsProjection
         var entryToDriver = BuildEntryToDriverMap(units, unitsById);
         var snapshotGarages = units.Where(u => u.TypeEquals("garage")).Where(IsOwnedGarage).ToList();
         var driverToGarage = BuildReverseLookup(snapshotGarages, "employees", "drivers");
+        var truckToGarage = BuildReverseLookup(snapshotGarages, "vehicles");
+        var drivers = units
+            .Where(unit => unit.TypeEquals("driver") || unit.TypeEquals("driver_ai"))
+            .ToList();
+        var trucks = units
+            .Where(unit => unit.TypeEquals("vehicle") || unit.TypeEquals("truck"))
+            .Where(unit => truckToGarage.ContainsKey(unit.Id))
+            .ToList();
+        var ownedTruckIds = trucks
+            .Select(truck => truck.Id)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var driverToTruck = BuildDriverTruckLookup(drivers, trucks, snapshotGarages);
         // profit_log_entry has no trailer field — infer trailer from driver's current assignment
-        var driverToTrailer = units
-            .Where(u => u.TypeEquals("driver") || u.TypeEquals("driver_ai"))
+        var driverToTrailer = drivers
             .Select(d => (DriverId: d.Id, TrailerId: FirstKnownValue(d, "assigned_trailer")))
             .Where(pair => !string.IsNullOrWhiteSpace(pair.TrailerId))
             .ToDictionary(pair => pair.DriverId, pair => pair.TrailerId!, StringComparer.OrdinalIgnoreCase);
@@ -311,18 +331,25 @@ public static partial class StatisticsProjection
             .Select(job =>
             {
                 var mission = BuildMission(job, trailerTypesByTrailer, unitsById, entryToDriver);
+                var keyMission = mission;
                 if (string.IsNullOrWhiteSpace(mission.TrailerId) &&
                     !string.IsNullOrWhiteSpace(mission.DriverId) &&
                     driverToTrailer.TryGetValue(mission.DriverId, out var inferredTrailerId))
                 {
                     mission = mission with { TrailerId = inferredTrailerId };
                 }
+                if (!string.IsNullOrWhiteSpace(mission.DriverId) &&
+                    driverToTruck.TryGetValue(mission.DriverId, out var inferredTruckId) &&
+                    (string.IsNullOrWhiteSpace(mission.TruckId) || !ownedTruckIds.Contains(mission.TruckId)))
+                {
+                    mission = mission with { TruckId = inferredTruckId };
+                }
                 var garageId = mission.DriverId != null
                     ? driverToGarage.GetValueOrDefault(mission.DriverId)
                     : null;
                 if (garageId != null)
                     mission = mission with { GarageId = garageId };
-                return new HistoricalMission(mission, BuildMissionDeduplicationKey(job, mission), snapshot.LastWritten);
+                return new HistoricalMission(mission, BuildMissionDeduplicationKey(job, keyMission), snapshot.LastWritten);
             });
     }
 
