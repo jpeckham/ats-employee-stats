@@ -2,16 +2,16 @@ namespace AtsEmployeeStats.Maui;
 
 public partial class App : Microsoft.Maui.Controls.Application
 {
-    private readonly MainPage _mainPage;
+    private readonly AppShell _shell;
 
-    public App(MainPage mainPage)
+    public App(AppShell shell)
     {
         InitializeComponent();
-        _mainPage = mainPage;
+        _shell = shell;
     }
 
     protected override Microsoft.Maui.Controls.Window CreateWindow(IActivationState? activationState) =>
-        new(_mainPage)
+        new(_shell)
         {
             Title = "ATS Employee Stats"
         };

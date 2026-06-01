@@ -1,6 +1,8 @@
 using AtsEmployeeStats.Application.Saves;
 using AtsEmployeeStats.Application.Statistics;
 using AtsEmployeeStats.Application.Statistics.Queries;
+using AtsEmployeeStats.Maui.Controllers;
+using AtsEmployeeStats.Maui.Views;
 using AtsEmployeeStats.Infrastructure.Saves;
 using Microsoft.Extensions.Logging;
 
@@ -53,7 +55,17 @@ public static class MauiProgram
         builder.Services.AddSingleton<IRecommendTrailersForGarageUseCase, RecommendTrailersForGarageUseCase>();
         builder.Services.AddSingleton<IRecommendDriverSkillsUseCase, RecommendDriverSkillsUseCase>();
         builder.Services.AddSingleton<IDiagnoseUnderperformersUseCase, DiagnoseUnderperformersUseCase>();
+        builder.Services.AddSingleton<DashboardController>();
+        builder.Services.AddSingleton<DetailNavigationController>();
+        builder.Services.AddTransient<AppShell>();
         builder.Services.AddTransient<MainPage>();
+        builder.Services.AddTransient<CompanyDetailPage>();
+        builder.Services.AddTransient<GarageDetailPage>();
+        builder.Services.AddTransient<DriverDetailPage>();
+        builder.Services.AddTransient<TruckDetailPage>();
+        builder.Services.AddTransient<TrailerDetailPage>();
+        builder.Services.AddTransient<JobDetailPage>();
+        builder.Services.AddTransient<CityDetailPage>();
 
         return builder.Build();
     }

@@ -6,6 +6,7 @@ using System.Windows.Input;
 using AtsEmployeeStats.Application.Saves;
 using AtsEmployeeStats.Application.Statistics.Queries;
 using AtsEmployeeStats.Contracts;
+using AtsEmployeeStats.Maui.Controllers;
 using AtsEmployeeStats.Maui.Presentation;
 
 namespace AtsEmployeeStats.Maui;
@@ -15,21 +16,21 @@ public partial class MainPage : ContentPage
     private bool _loaded;
 
     public MainPage(
-        IStatisticsIngestUseCase ingestUseCase,
-        IStatisticsDashboardUseCases dashboardUseCases,
         IRecommendNextGarageCityUseCase recommendNextGarageCityUseCase,
         IRecommendTrailersForGarageUseCase recommendTrailersForGarageUseCase,
         IRecommendDriverSkillsUseCase recommendDriverSkillsUseCase,
-        IDiagnoseUnderperformersUseCase diagnoseUnderperformersUseCase)
+        IDiagnoseUnderperformersUseCase diagnoseUnderperformersUseCase,
+        DashboardController dashboardController,
+        DetailNavigationController navigationController)
     {
         InitializeComponent();
         BindingContext = new DashboardPageModel(
-            ingestUseCase,
-            dashboardUseCases,
             recommendNextGarageCityUseCase,
             recommendTrailersForGarageUseCase,
             recommendDriverSkillsUseCase,
-            diagnoseUnderperformersUseCase);
+            diagnoseUnderperformersUseCase,
+            dashboardController,
+            navigationController);
     }
 
     protected override void OnAppearing()
@@ -49,7 +50,8 @@ public sealed record CompanySummaryItem(
     string ProfitText,
     string DriverCountText,
     string AssetsText,
-    ICommand ViewCommand);
+    ICommand ViewCommand,
+    ICommand OpenDetailCommand);
 
 public sealed record DetailMetricItem(string Label, string Value);
 
@@ -61,12 +63,12 @@ public sealed record DetailRowItem(
 
 internal sealed class DashboardPageModel : INotifyPropertyChanged, IDashboardPresentationTarget
 {
-    private readonly IStatisticsIngestUseCase _ingestUseCase;
-    private readonly IStatisticsDashboardUseCases _dashboardUseCases;
     private readonly IRecommendNextGarageCityUseCase _recommendNextGarageCityUseCase;
     private readonly IRecommendTrailersForGarageUseCase _recommendTrailersForGarageUseCase;
     private readonly IRecommendDriverSkillsUseCase _recommendDriverSkillsUseCase;
     private readonly IDiagnoseUnderperformersUseCase _diagnoseUnderperformersUseCase;
+    private readonly DashboardController _dashboardController;
+    private readonly DetailNavigationController _navigationController;
     private readonly Dictionary<string, CompanyDto> _companyDetails = new(StringComparer.OrdinalIgnoreCase);
     private bool _isBusy;
     private string _statusText = "Ready";
@@ -90,23 +92,24 @@ internal sealed class DashboardPageModel : INotifyPropertyChanged, IDashboardPre
     private string _lastDashboardStatusText = "Refreshed statistics";
 
     public DashboardPageModel(
-        IStatisticsIngestUseCase ingestUseCase,
-        IStatisticsDashboardUseCases dashboardUseCases,
         IRecommendNextGarageCityUseCase recommendNextGarageCityUseCase,
         IRecommendTrailersForGarageUseCase recommendTrailersForGarageUseCase,
         IRecommendDriverSkillsUseCase recommendDriverSkillsUseCase,
-        IDiagnoseUnderperformersUseCase diagnoseUnderperformersUseCase)
+        IDiagnoseUnderperformersUseCase diagnoseUnderperformersUseCase,
+        DashboardController dashboardController,
+        DetailNavigationController navigationController)
     {
-        _ingestUseCase = ingestUseCase;
-        _dashboardUseCases = dashboardUseCases;
         _recommendNextGarageCityUseCase = recommendNextGarageCityUseCase;
         _recommendTrailersForGarageUseCase = recommendTrailersForGarageUseCase;
         _recommendDriverSkillsUseCase = recommendDriverSkillsUseCase;
         _diagnoseUnderperformersUseCase = diagnoseUnderperformersUseCase;
+        _dashboardController = dashboardController;
+        _navigationController = navigationController;
         RefreshCommand = new Command(
             execute: async () => await RefreshAsync(),
             canExecute: () => !IsBusy);
         OpenCompanyCommand = new Command<string?>(OpenCompany);
+        OpenCompanyDetailCommand = new Command<string?>(async companyId => await OpenCompanyDetailAsync(companyId));
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -128,6 +131,8 @@ internal sealed class DashboardPageModel : INotifyPropertyChanged, IDashboardPre
     public ICommand RefreshCommand { get; }
 
     public ICommand OpenCompanyCommand { get; }
+
+    public ICommand OpenCompanyDetailCommand { get; }
 
     public bool IsBusy
     {
@@ -264,10 +269,7 @@ internal sealed class DashboardPageModel : INotifyPropertyChanged, IDashboardPre
         {
             var request = new DashboardQueryRequest();
             var options = request.ToOptions();
-            var progress = new MauiProgressPresenter(this);
-            var dashboardPresenter = new MauiDashboardPresenter(this);
-            await _ingestUseCase.IngestAsync(CancellationToken.None, progress.AsProgress(CancellationToken.None), force: false);
-            await _dashboardUseCases.ExecuteDashboardAsync(dashboardPresenter, request, progress, CancellationToken.None);
+            await _dashboardController.RefreshAsync(this, request, CancellationToken.None);
             await ApplyRecommendationsAsync(_companyDetails.Values.ToList(), options);
             StatusText = _lastDashboardStatusText;
         }
@@ -306,7 +308,8 @@ internal sealed class DashboardPageModel : INotifyPropertyChanged, IDashboardPre
                 company.ProfitText,
                 company.DriverCountText,
                 company.AssetsText,
-                OpenCompanyCommand));
+                OpenCompanyCommand,
+                OpenCompanyDetailCommand));
         }
 
         CompanyCountText = presentation.CompanyCountText;
@@ -408,6 +411,14 @@ internal sealed class DashboardPageModel : INotifyPropertyChanged, IDashboardPre
                     FormatMoney(job.Profit),
                     $"{FormatValue(job.SourceCity)} to {FormatValue(job.TargetCity)}",
                     FormatValue(job.TrailerType))));
+    }
+
+    private async Task OpenCompanyDetailAsync(string? companyId)
+    {
+        if (string.IsNullOrWhiteSpace(companyId))
+            return;
+
+        await _navigationController.GoToCompanyAsync(companyId);
     }
 
     private void ClearSelectedCompany()
