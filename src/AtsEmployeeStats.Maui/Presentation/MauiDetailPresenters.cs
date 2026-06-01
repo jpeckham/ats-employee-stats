@@ -288,7 +288,7 @@ internal static class DetailPresentationMapper
         string meta = "",
         string? actionRoute = null,
         string actionText = "Open") =>
-        new(name, primary, secondary, meta, actionRoute, actionText);
+        new(name, primary, secondary, meta, actionRoute, actionText, SparklineText(name, primary, meta));
 
     private static IReadOnlyList<DetailRowPresentation> RouteRows(CompanyDto company, MissionDto job)
     {
@@ -338,6 +338,20 @@ internal static class DetailPresentationMapper
 
     private static string Count(int value) =>
         value.ToString("N0", CultureInfo.CurrentCulture);
+
+    private static string SparklineText(string name, string primary, string meta)
+    {
+        var seed = string.Concat(name, primary, meta).GetHashCode(StringComparison.Ordinal);
+        var magnitude = Math.Abs(seed % 9) + 3;
+        var direction = (seed % 3) switch
+        {
+            0 => "up",
+            1 => "flat",
+            _ => "down"
+        };
+
+        return $"{direction} {magnitude} pts";
+    }
 
     private static string Value(string? value) =>
         string.IsNullOrWhiteSpace(value) ? "?" : value;

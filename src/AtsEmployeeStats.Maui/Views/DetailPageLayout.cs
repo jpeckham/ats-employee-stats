@@ -51,9 +51,45 @@ internal static class DetailPageLayout
         metrics.SetBinding(BindableLayout.ItemsSourceProperty, "Metrics");
         BindableLayout.SetItemTemplate(metrics, new DataTemplate(CreateMetricView));
 
-        var sections = new VerticalStackLayout { Spacing = 14 };
-        sections.SetBinding(BindableLayout.ItemsSourceProperty, "Sections");
-        BindableLayout.SetItemTemplate(sections, new DataTemplate(() => CreateSectionView(navigateAsync)));
+        var sectionTabs = new FlexLayout
+        {
+            Wrap = FlexWrap.Wrap,
+            Direction = FlexDirection.Row,
+            AlignItems = FlexAlignItems.Center
+        };
+        sectionTabs.SetBinding(BindableLayout.ItemsSourceProperty, "SectionTabs");
+        BindableLayout.SetItemTemplate(sectionTabs, new DataTemplate(CreateSectionTabView));
+
+        var sortHeader = new Grid
+        {
+            ColumnDefinitions =
+            {
+                new ColumnDefinition(new GridLength(1.2, GridUnitType.Star)),
+                new ColumnDefinition(GridLength.Star),
+                new ColumnDefinition(GridLength.Auto),
+                new ColumnDefinition(GridLength.Auto)
+            },
+            ColumnSpacing = 12
+        };
+        sortHeader.Add(CreateSortButton("Name", "Name"));
+        sortHeader.Add(CreateSortButton("Value", "Primary"), 1);
+        sortHeader.Add(CreateSortButton("Trend", "Secondary"), 2);
+        sortHeader.Add(CreateSortButton("Meta", "Meta"), 3);
+
+        var activeRows = new VerticalStackLayout { Spacing = 10 };
+        activeRows.SetBinding(BindableLayout.ItemsSourceProperty, "ActiveSectionRows");
+        BindableLayout.SetItemTemplate(activeRows, new DataTemplate(() => CreateRowView(navigateAsync)));
+
+        var relatedData = new Border
+        {
+            Padding = 16,
+            Content = new VerticalStackLayout
+            {
+                Spacing = 12,
+                Children = { sectionTabs, sortHeader, activeRows }
+            }
+        };
+        SetCardTheme(relatedData);
 
         var emptyState = CreateEmptyState();
 
@@ -63,7 +99,7 @@ internal static class DetailPageLayout
             Spacing = 16,
             MaximumWidthRequest = 1360,
             HorizontalOptions = LayoutOptions.Center,
-            Children = { header, emptyState, metrics, sections }
+            Children = { header, emptyState, metrics, relatedData }
         };
 
         SetThemeBackground(content, "#F6F7F9", "#15171A");
@@ -120,10 +156,55 @@ internal static class DetailPageLayout
         return border;
     }
 
+    private static object CreateSectionTabView()
+    {
+        var button = new Button
+        {
+            FontSize = 13,
+            Padding = new Thickness(14, 7),
+            Margin = new Thickness(0, 0, 8, 8),
+            HeightRequest = 34,
+            MinimumWidthRequest = 92
+        };
+        button.SetBinding(Button.TextProperty, "Title");
+        button.SetBinding(Button.CommandProperty, "SelectCommand");
+        button.SetBinding(Button.CommandParameterProperty, "Id");
+        return button;
+    }
+
+    private static Button CreateSortButton(string text, string parameter)
+    {
+        var button = new Button
+        {
+            Text = text,
+            FontSize = 12,
+            Padding = new Thickness(10, 4),
+            HeightRequest = 30,
+            MinimumWidthRequest = 64
+        };
+        button.SetBinding(Button.CommandProperty, "SortSectionRowsCommand");
+        button.CommandParameter = parameter;
+        return button;
+    }
+
     private static object CreateRowView(Func<string, Task> navigateAsync)
     {
-        var name = new Label { FontAttributes = FontAttributes.Bold };
-        name.SetBinding(Label.TextProperty, "Name");
+        var name = new Button
+        {
+            FontAttributes = FontAttributes.Bold,
+            Padding = new Thickness(0),
+            HorizontalOptions = LayoutOptions.Start,
+            BackgroundColor = Colors.Transparent
+        };
+        name.SetBinding(Button.TextProperty, "Name");
+        name.Clicked += async (_, _) =>
+        {
+            if (name.BindingContext is Presentation.DetailRowPresentation rowModel &&
+                !string.IsNullOrWhiteSpace(rowModel.ActionRoute))
+            {
+                await navigateAsync(rowModel.ActionRoute);
+            }
+        };
 
         var primary = new Label();
         primary.SetBinding(Label.TextProperty, "PrimaryText");
@@ -136,23 +217,9 @@ internal static class DetailPageLayout
         SetThemeText(secondary, "#6A737D", "#AAB2BD");
         secondary.SetBinding(Label.TextProperty, "SecondaryText");
 
-        var action = new Button
-        {
-            FontSize = 12,
-            Padding = new Thickness(10, 4),
-            MinimumWidthRequest = 64,
-            HeightRequest = 32
-        };
-        action.SetBinding(Button.TextProperty, "ActionText");
-        action.SetBinding(VisualElement.IsVisibleProperty, "HasAction");
-        action.Clicked += async (_, _) =>
-        {
-            if (action.BindingContext is Presentation.DetailRowPresentation rowModel &&
-                !string.IsNullOrWhiteSpace(rowModel.ActionRoute))
-            {
-                await navigateAsync(rowModel.ActionRoute);
-            }
-        };
+        var sparkline = new Label { FontSize = 12, HorizontalTextAlignment = TextAlignment.End };
+        SetThemeText(sparkline, "#427A61", "#8BD2A5");
+        sparkline.SetBinding(Label.TextProperty, "SparklineText");
 
         var row = new Grid
         {
@@ -172,8 +239,8 @@ internal static class DetailPageLayout
         };
         row.Add(name);
         row.Add(primary, 1);
-        row.Add(meta, 2);
-        row.Add(action, 3);
+        row.Add(sparkline, 2);
+        row.Add(meta, 3);
         row.Add(secondary, 0, 1);
         Grid.SetColumnSpan(secondary, 4);
         return row;

@@ -49,9 +49,7 @@ public sealed record CompanySummaryItem(
     string DisplayName,
     string ProfitText,
     string DriverCountText,
-    string AssetsText,
-    ICommand ViewCommand,
-    ICommand OpenDetailCommand);
+    string AssetsText);
 
 public sealed record DetailMetricItem(string Label, string Value);
 
@@ -60,6 +58,28 @@ public sealed record DetailRowItem(
     string PrimaryText,
     string SecondaryText,
     string MetaText);
+
+public sealed record ExplorerNavigationItem(
+    string Id,
+    string DisplayName,
+    string Kind,
+    int Depth,
+    ICommand SelectCommand);
+
+public sealed record DetailTabItem(
+    string Id,
+    string Title,
+    bool IsSelected,
+    ICommand SelectCommand);
+
+public sealed record SortableExplorerRowItem(
+    string Name,
+    string PrimaryText,
+    string SecondaryText,
+    string MetaText,
+    string SparklineText,
+    string? ActionRoute,
+    ICommand OpenCommand);
 
 internal sealed class DashboardPageModel : INotifyPropertyChanged, IDashboardPresentationTarget
 {
@@ -85,6 +105,11 @@ internal sealed class DashboardPageModel : INotifyPropertyChanged, IDashboardPre
     private string _overallProgressText = "Save files: 0 of 0";
     private string _currentFileProgressText = "Current save: 0 of 0 units";
     private string? _selectedCompanyId;
+    private string _selectedExplorerId = string.Empty;
+    private string _activeDetailTab = "overview";
+    private string _activeRowsTitle = "Overview";
+    private string _sortColumn = "profit";
+    private bool _sortDescending = true;
     private bool _hasSelectedCompany;
     private string _selectedCompanyTitle = "No company selected";
     private string _selectedCompanySubtitle = string.Empty;
@@ -110,11 +135,21 @@ internal sealed class DashboardPageModel : INotifyPropertyChanged, IDashboardPre
             canExecute: () => !IsBusy);
         OpenCompanyCommand = new Command<string?>(OpenCompany);
         OpenCompanyDetailCommand = new Command<string?>(async companyId => await OpenCompanyDetailAsync(companyId));
+        SelectExplorerItemCommand = new Command<string?>(SelectExplorerItem);
+        SelectDetailTabCommand = new Command<string?>(SelectDetailTab);
+        SortActiveRowsCommand = new Command<string?>(SortActiveRows);
+        OpenRowCommand = new Command<string?>(async route => await OpenRowAsync(route));
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
     public ObservableCollection<CompanySummaryItem> Companies { get; } = [];
+
+    public ObservableCollection<ExplorerNavigationItem> ExplorerNavigationItems { get; } = [];
+
+    public ObservableCollection<DetailTabItem> DetailTabs { get; } = [];
+
+    public ObservableCollection<SortableExplorerRowItem> ActiveDetailRows { get; } = [];
 
     public ObservableCollection<DetailMetricItem> SelectedCompanyMetrics { get; } = [];
 
@@ -133,6 +168,14 @@ internal sealed class DashboardPageModel : INotifyPropertyChanged, IDashboardPre
     public ICommand OpenCompanyCommand { get; }
 
     public ICommand OpenCompanyDetailCommand { get; }
+
+    public ICommand SelectExplorerItemCommand { get; }
+
+    public ICommand SelectDetailTabCommand { get; }
+
+    public ICommand SortActiveRowsCommand { get; }
+
+    public ICommand OpenRowCommand { get; }
 
     public bool IsBusy
     {
@@ -252,6 +295,12 @@ internal sealed class DashboardPageModel : INotifyPropertyChanged, IDashboardPre
         private set => SetField(ref _selectedCompanyProfitText, value);
     }
 
+    public string ActiveRowsTitle
+    {
+        get => _activeRowsTitle;
+        private set => SetField(ref _activeRowsTitle, value);
+    }
+
     private async Task RefreshAsync()
     {
         if (IsBusy)
@@ -307,15 +356,14 @@ internal sealed class DashboardPageModel : INotifyPropertyChanged, IDashboardPre
                 company.DisplayName,
                 company.ProfitText,
                 company.DriverCountText,
-                company.AssetsText,
-                OpenCompanyCommand,
-                OpenCompanyDetailCommand));
+                company.AssetsText));
         }
 
         CompanyCountText = presentation.CompanyCountText;
         TotalProfitText = presentation.TotalProfitText;
         DriverCountText = presentation.DriverCountText;
         _lastDashboardStatusText = presentation.RefreshedStatusText;
+        BuildExplorerNavigation();
 
         if (_selectedCompanyId is not null && _companyDetails.ContainsKey(_selectedCompanyId))
         {
@@ -336,6 +384,8 @@ internal sealed class DashboardPageModel : INotifyPropertyChanged, IDashboardPre
         }
 
         _selectedCompanyId = company.Id;
+        _selectedExplorerId = $"company:{company.Id}";
+        _activeDetailTab = "overview";
         HasSelectedCompany = true;
         SelectedCompanyTitle = company.DisplayName;
         SelectedCompanySubtitle = string.IsNullOrWhiteSpace(company.OwnerName)
@@ -411,7 +461,240 @@ internal sealed class DashboardPageModel : INotifyPropertyChanged, IDashboardPre
                     FormatMoney(job.Profit),
                     $"{FormatValue(job.SourceCity)} to {FormatValue(job.TargetCity)}",
                     FormatValue(job.TrailerType))));
+        BuildDetailTabs();
+        RefreshActiveRows();
     }
+
+    private void SelectExplorerItem(string? itemId)
+    {
+        if (string.IsNullOrWhiteSpace(itemId))
+            return;
+
+        var parts = itemId.Split(':', 3);
+        if (parts.Length < 2)
+            return;
+
+        var companyId = parts[1];
+        if (!_companyDetails.TryGetValue(companyId, out var company))
+            return;
+
+        _selectedCompanyId = company.Id;
+        _selectedExplorerId = itemId;
+        HasSelectedCompany = true;
+        SelectedCompanyTitle = company.DisplayName;
+        SelectedCompanySubtitle = string.IsNullOrWhiteSpace(company.OwnerName)
+            ? company.Id
+            : $"{company.OwnerName} - {company.Id}";
+        SelectedCompanyProfitText = FormatMoney(company.Profit);
+
+        _activeDetailTab = parts[0] switch
+        {
+            "garages" => "garages",
+            "drivers" => "drivers",
+            "trucks" => "trucks",
+            "trailers" => "trailers",
+            "jobs" => "jobs",
+            "cities" => "cities",
+            _ => "overview"
+        };
+
+        BuildDetailTabs();
+        RefreshActiveRows();
+    }
+
+    private void SelectDetailTab(string? tabId)
+    {
+        if (string.IsNullOrWhiteSpace(tabId) || _selectedCompanyId is null)
+            return;
+
+        _activeDetailTab = tabId;
+        _selectedExplorerId = $"{tabId}:{_selectedCompanyId}";
+        BuildDetailTabs();
+        RefreshActiveRows();
+    }
+
+    private void SortActiveRows(string? column)
+    {
+        if (string.IsNullOrWhiteSpace(column))
+            return;
+
+        if (StringComparer.OrdinalIgnoreCase.Equals(_sortColumn, column))
+        {
+            _sortDescending = !_sortDescending;
+        }
+        else
+        {
+            _sortColumn = column;
+            _sortDescending = column is not "name";
+        }
+
+        RefreshActiveRows();
+    }
+
+    private async Task OpenRowAsync(string? route)
+    {
+        if (string.IsNullOrWhiteSpace(route))
+            return;
+
+        await _navigationController.GoToRouteAsync(route);
+    }
+
+    private void BuildExplorerNavigation()
+    {
+        ExplorerNavigationItems.Clear();
+        foreach (var company in _companyDetails.Values.OrderBy(company => company.DisplayName, StringComparer.CurrentCultureIgnoreCase))
+        {
+            AddExplorerItem($"company:{company.Id}", company.DisplayName, "Company", 0);
+            AddExplorerItem($"overview:{company.Id}", "Overview", "View", 1);
+            AddExplorerItem($"garages:{company.Id}", $"Garages ({company.Garages.Count:N0})", "List", 1);
+            AddExplorerItem($"drivers:{company.Id}", $"Drivers ({company.Drivers.Count:N0})", "List", 1);
+            AddExplorerItem($"trucks:{company.Id}", $"Trucks ({company.Trucks.Count:N0})", "List", 1);
+            AddExplorerItem($"trailers:{company.Id}", $"Trailers ({company.Trailers?.Count ?? 0:N0})", "List", 1);
+            AddExplorerItem($"jobs:{company.Id}", $"Jobs ({company.Missions.Count:N0})", "List", 1);
+            AddExplorerItem($"cities:{company.Id}", $"Cities ({company.Cities?.Count ?? 0:N0})", "List", 1);
+        }
+    }
+
+    private void AddExplorerItem(string id, string displayName, string kind, int depth) =>
+        ExplorerNavigationItems.Add(new ExplorerNavigationItem(id, displayName, kind, depth, SelectExplorerItemCommand));
+
+    private void BuildDetailTabs()
+    {
+        DetailTabs.Clear();
+        foreach (var tab in new[]
+                 {
+                     ("overview", "Overview"),
+                     ("garages", "Garages"),
+                     ("drivers", "Drivers"),
+                     ("trucks", "Trucks"),
+                     ("trailers", "Trailers"),
+                     ("jobs", "Jobs"),
+                     ("cities", "Cities")
+                 })
+        {
+            DetailTabs.Add(new DetailTabItem(tab.Item1, tab.Item2, StringComparer.OrdinalIgnoreCase.Equals(tab.Item1, _activeDetailTab), SelectDetailTabCommand));
+        }
+    }
+
+    private void RefreshActiveRows()
+    {
+        ActiveDetailRows.Clear();
+        if (_selectedCompanyId is null || !_companyDetails.TryGetValue(_selectedCompanyId, out var company))
+            return;
+
+        var rows = _activeDetailTab switch
+        {
+            "garages" => company.Garages.Select(garage => Row(
+                garage.DisplayName,
+                FormatMoney(garage.Profit),
+                $"{garage.EmployeeCount:N0} drivers / {garage.TruckCount:N0} trucks / {garage.TrailerCount:N0} trailers",
+                $"{FormatMoney(garage.ProfitPerDay)}/day",
+                SparklineText(garage.Trend),
+                RouteToGarage(company.Id, garage.Id),
+                garage.Profit,
+                garage.ProfitPerDay,
+                garage.EmployeeCount)),
+            "drivers" => company.Drivers.Select(driver => Row(
+                driver.DisplayName,
+                FormatMoney(driver.Profit),
+                $"{GetGarageDisplayName(company, driver.GarageId)} / {GetTruckDisplayName(company, driver.TruckId)}",
+                $"{driver.JobCount:N0} jobs",
+                SparklineText(driver.Trend),
+                RouteToDriver(company.Id, driver.Id),
+                driver.Profit,
+                driver.ProfitPerDay,
+                driver.JobCount)),
+            "trucks" => company.Trucks.Select(truck => Row(
+                truck.DisplayName,
+                FormatMoney(truck.Profit),
+                $"{GetGarageDisplayName(company, truck.GarageId)} / {GetDriverDisplayName(company, truck.DriverId)}",
+                truck.LicensePlate ?? truck.Id,
+                SparklineText(truck.Trend),
+                RouteToTruck(company.Id, truck.Id),
+                truck.Profit,
+                truck.ProfitPerDay,
+                0)),
+            "trailers" => (company.Trailers ?? []).Select(trailer => Row(
+                string.IsNullOrWhiteSpace(trailer.LicensePlate) ? trailer.Id : trailer.LicensePlate!,
+                FormatMoney(trailer.Profit),
+                $"{trailer.TrailerType} / {GetGarageDisplayName(company, trailer.GarageId)}",
+                $"{trailer.JobCount:N0} jobs",
+                SparklineText(trailer.Trend),
+                RouteToTrailer(company.Id, trailer.LicensePlate ?? trailer.Id),
+                trailer.Profit,
+                trailer.ProfitPerDay,
+                trailer.JobCount)),
+            "jobs" => company.Missions.Select(job => Row(
+                string.IsNullOrWhiteSpace(job.Cargo) ? job.Id : job.Cargo!,
+                FormatMoney(job.Profit),
+                $"{FormatValue(job.SourceCity)} to {FormatValue(job.TargetCity)}",
+                job.TimestampDay?.ToString(CultureInfo.CurrentCulture) ?? "-",
+                SparklineText(null),
+                RouteToJob(company.Id, job.Id),
+                job.Profit,
+                job.TimestampDay ?? 0,
+                0)),
+            "cities" => (company.Cities ?? []).Select(city => Row(
+                city.DisplayName,
+                FormatMoney(city.BidirectionalProfit),
+                city.HasOwnedGarage ? "Owned garage" : "No owned garage",
+                $"Expansion {city.ExpansionScore:0.##}",
+                $"Visits {city.VisitCount:N0}",
+                RouteToCity(company.Id, city.Id),
+                city.BidirectionalProfit,
+                (long)city.ExpansionScore,
+                city.VisitCount)),
+            _ => OverviewRows(company)
+        };
+
+        ActiveRowsTitle = _activeDetailTab switch
+        {
+            "garages" => "Garages",
+            "drivers" => "Drivers",
+            "trucks" => "Trucks",
+            "trailers" => "Trailers",
+            "jobs" => "Jobs",
+            "cities" => "Cities",
+            _ => "Overview"
+        };
+
+        foreach (var row in SortRows(rows))
+            ActiveDetailRows.Add(row.Item);
+    }
+
+    private IEnumerable<ExplorerRowSortEnvelope> OverviewRows(CompanyDto company) =>
+    [
+        Row("Profit trend", SelectedCompanyProfitText, "Company-wide profit movement", "Trend", SparklineText(company.ProfitTrend), RouteToCompany(company.Id), company.Profit, company.Profit, company.Missions.Count),
+        Row("Garages", $"{company.Garages.Count:N0}", "Owned garages and their associated fleets", "Open list", string.Empty, null, company.Garages.Sum(garage => garage.Profit), 0, company.Garages.Count),
+        Row("Drivers", $"{company.Drivers.Count:N0}", "Driver profitability, jobs, trucks, and garage history", "Open list", string.Empty, null, company.Drivers.Sum(driver => driver.Profit), 0, company.Drivers.Count),
+        Row("Cities", $"{company.Cities?.Count ?? 0:N0}", "Expansion candidates, route volume, and inbound/outbound profit", "Open list", string.Empty, null, company.Cities?.Sum(city => city.BidirectionalProfit) ?? 0, 0, company.Cities?.Count ?? 0)
+    ];
+
+    private IEnumerable<ExplorerRowSortEnvelope> SortRows(IEnumerable<ExplorerRowSortEnvelope> rows)
+    {
+        var comparer = StringComparer.CurrentCultureIgnoreCase;
+        return (_sortColumn, _sortDescending) switch
+        {
+            ("name", true) => rows.OrderByDescending(row => row.Item.Name, comparer),
+            ("name", false) => rows.OrderBy(row => row.Item.Name, comparer),
+            ("meta", true) => rows.OrderByDescending(row => row.MetaValue).ThenBy(row => row.Item.Name, comparer),
+            ("meta", false) => rows.OrderBy(row => row.MetaValue).ThenBy(row => row.Item.Name, comparer),
+            (_, false) => rows.OrderBy(row => row.PrimaryValue).ThenBy(row => row.Item.Name, comparer),
+            _ => rows.OrderByDescending(row => row.PrimaryValue).ThenBy(row => row.Item.Name, comparer)
+        };
+    }
+
+    private ExplorerRowSortEnvelope Row(
+        string name,
+        string primary,
+        string secondary,
+        string meta,
+        string sparklineText,
+        string? route,
+        long primaryValue,
+        long secondaryValue,
+        int metaValue) =>
+        new(new SortableExplorerRowItem(name, primary, secondary, meta, sparklineText, route, OpenRowCommand), primaryValue, secondaryValue, metaValue);
 
     private async Task OpenCompanyDetailAsync(string? companyId)
     {
@@ -434,6 +717,9 @@ internal sealed class DashboardPageModel : INotifyPropertyChanged, IDashboardPre
         SelectedTrucks.Clear();
         SelectedTrailers.Clear();
         SelectedRecentJobs.Clear();
+        DetailTabs.Clear();
+        ActiveDetailRows.Clear();
+        ActiveRowsTitle = "Overview";
     }
 
     private async Task ApplyRecommendationsAsync(IReadOnlyCollection<CompanyDto> companies, DashboardQueryOptions options)
@@ -522,6 +808,44 @@ internal sealed class DashboardPageModel : INotifyPropertyChanged, IDashboardPre
     private static bool IdEquals(string? left, string? right) =>
         StringComparer.OrdinalIgnoreCase.Equals(left, right);
 
+    private static string SparklineText(SparklineDto? sparkline)
+    {
+        var points = sparkline?.Points;
+        if (points is null || points.Count == 0)
+            return string.Empty;
+
+        var first = points.First().Value;
+        var last = points.Last().Value;
+        var direction = last.CompareTo(first) switch
+        {
+            > 0 => "up",
+            < 0 => "down",
+            _ => "flat"
+        };
+        return $"{direction} {points.Count:N0} pts";
+    }
+
+    private static string RouteToCompany(string companyId) =>
+        $"company?companyId={Uri.EscapeDataString(companyId)}";
+
+    private static string RouteToGarage(string companyId, string garageId) =>
+        $"garage?companyId={Uri.EscapeDataString(companyId)}&garageId={Uri.EscapeDataString(garageId)}";
+
+    private static string RouteToDriver(string companyId, string driverId) =>
+        $"driver?companyId={Uri.EscapeDataString(companyId)}&driverId={Uri.EscapeDataString(driverId)}";
+
+    private static string RouteToTruck(string companyId, string truckId) =>
+        $"truck?companyId={Uri.EscapeDataString(companyId)}&truckId={Uri.EscapeDataString(truckId)}";
+
+    private static string RouteToTrailer(string companyId, string licensePlate) =>
+        $"trailer?companyId={Uri.EscapeDataString(companyId)}&licensePlate={Uri.EscapeDataString(licensePlate)}";
+
+    private static string RouteToJob(string companyId, string jobId) =>
+        $"job?companyId={Uri.EscapeDataString(companyId)}&jobId={Uri.EscapeDataString(jobId)}";
+
+    private static string RouteToCity(string companyId, string cityId) =>
+        $"city?companyId={Uri.EscapeDataString(companyId)}&cityId={Uri.EscapeDataString(cityId)}";
+
     private static void ReplaceItems<T>(ObservableCollection<T> collection, IEnumerable<T> items)
     {
         collection.Clear();
@@ -538,4 +862,10 @@ internal sealed class DashboardPageModel : INotifyPropertyChanged, IDashboardPre
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
         return true;
     }
+
+    private sealed record ExplorerRowSortEnvelope(
+        SortableExplorerRowItem Item,
+        long PrimaryValue,
+        long SecondaryValue,
+        int MetaValue);
 }

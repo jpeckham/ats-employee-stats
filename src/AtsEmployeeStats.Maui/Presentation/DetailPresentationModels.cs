@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
+using System.Windows.Input;
 
 namespace AtsEmployeeStats.Maui.Presentation;
 
@@ -12,10 +13,17 @@ internal sealed record DetailRowPresentation(
     string SecondaryText,
     string MetaText = "",
     string? ActionRoute = null,
-    string ActionText = "Open")
+    string ActionText = "Open",
+    string SparklineText = "")
 {
     public bool HasAction => !string.IsNullOrWhiteSpace(ActionRoute);
 }
+
+internal sealed record DetailSectionTabItem(
+    string Id,
+    string Title,
+    bool IsSelected,
+    ICommand SelectCommand);
 
 internal sealed record DetailSectionPresentation(
     string Title,
@@ -46,12 +54,30 @@ internal sealed class DetailPageModel : IDetailPresentationTarget, INotifyProper
     private string _statusText = "Loading local statistics...";
     private bool _isBusy;
     private bool _hasContent;
+    private string _activeSectionId = string.Empty;
+    private string _sortColumn = "Primary";
+    private bool _sortDescending = true;
+    private IReadOnlyList<DetailSectionPresentation> _sections = [];
+
+    public DetailPageModel()
+    {
+        SelectSectionCommand = new Command<string?>(SelectSection);
+        SortSectionRowsCommand = new Command<string?>(SortSectionRows);
+    }
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
     public ObservableCollection<DetailMetricPresentation> Metrics { get; } = [];
 
     public ObservableCollection<DetailSectionPresentation> Sections { get; } = [];
+
+    public ObservableCollection<DetailSectionTabItem> SectionTabs { get; } = [];
+
+    public ObservableCollection<DetailRowPresentation> ActiveSectionRows { get; } = [];
+
+    public ICommand SelectSectionCommand { get; }
+
+    public ICommand SortSectionRowsCommand { get; }
 
     public string Title
     {
@@ -116,6 +142,10 @@ internal sealed class DetailPageModel : IDetailPresentationTarget, INotifyProper
         HasContent = false;
         Metrics.Clear();
         Sections.Clear();
+        SectionTabs.Clear();
+        ActiveSectionRows.Clear();
+        _sections = [];
+        _activeSectionId = string.Empty;
     }
 
     public void ShowDetail(DetailScreenPresentation presentation)
@@ -127,6 +157,12 @@ internal sealed class DetailPageModel : IDetailPresentationTarget, INotifyProper
         HasContent = true;
         Replace(Metrics, presentation.Metrics);
         Replace(Sections, presentation.Sections);
+        _sections = presentation.Sections;
+        _activeSectionId = _sections.FirstOrDefault()?.Title ?? string.Empty;
+        _sortColumn = "Primary";
+        _sortDescending = true;
+        BuildSectionTabs();
+        RefreshActiveSectionRows();
     }
 
     public void ShowMissing(string title, string message)
@@ -138,6 +174,10 @@ internal sealed class DetailPageModel : IDetailPresentationTarget, INotifyProper
         HasContent = false;
         Metrics.Clear();
         Sections.Clear();
+        SectionTabs.Clear();
+        ActiveSectionRows.Clear();
+        _sections = [];
+        _activeSectionId = string.Empty;
     }
 
     public void ShowError(string title, string message)
@@ -149,6 +189,73 @@ internal sealed class DetailPageModel : IDetailPresentationTarget, INotifyProper
         HasContent = false;
         Metrics.Clear();
         Sections.Clear();
+        SectionTabs.Clear();
+        ActiveSectionRows.Clear();
+        _sections = [];
+        _activeSectionId = string.Empty;
+    }
+
+    private void SelectSection(string? sectionId)
+    {
+        if (string.IsNullOrWhiteSpace(sectionId) ||
+            StringComparer.Ordinal.Equals(sectionId, _activeSectionId))
+        {
+            return;
+        }
+
+        _activeSectionId = sectionId;
+        _sortColumn = "Primary";
+        _sortDescending = true;
+        BuildSectionTabs();
+        RefreshActiveSectionRows();
+    }
+
+    private void SortSectionRows(string? column)
+    {
+        var nextColumn = string.IsNullOrWhiteSpace(column) ? "Primary" : column;
+        if (StringComparer.OrdinalIgnoreCase.Equals(_sortColumn, nextColumn))
+            _sortDescending = !_sortDescending;
+        else
+        {
+            _sortColumn = nextColumn;
+            _sortDescending = true;
+        }
+
+        RefreshActiveSectionRows();
+    }
+
+    private void BuildSectionTabs()
+    {
+        SectionTabs.Clear();
+        foreach (var section in _sections)
+        {
+            SectionTabs.Add(new DetailSectionTabItem(
+                section.Title,
+                section.Title,
+                StringComparer.Ordinal.Equals(section.Title, _activeSectionId),
+                SelectSectionCommand));
+        }
+    }
+
+    private void RefreshActiveSectionRows()
+    {
+        var rows = _sections.FirstOrDefault(x => StringComparer.Ordinal.Equals(x.Title, _activeSectionId))?.Rows ?? [];
+        Replace(ActiveSectionRows, SortRows(rows));
+    }
+
+    private IEnumerable<DetailRowPresentation> SortRows(IEnumerable<DetailRowPresentation> rows)
+    {
+        return (_sortColumn.ToUpperInvariant(), _sortDescending) switch
+        {
+            ("NAME", true) => rows.OrderByDescending(x => x.Name),
+            ("NAME", false) => rows.OrderBy(x => x.Name),
+            ("META", true) => rows.OrderByDescending(x => x.MetaText),
+            ("META", false) => rows.OrderBy(x => x.MetaText),
+            ("SECONDARY", true) => rows.OrderByDescending(x => x.SecondaryText),
+            ("SECONDARY", false) => rows.OrderBy(x => x.SecondaryText),
+            (_, true) => rows.OrderByDescending(x => x.PrimaryText),
+            _ => rows.OrderBy(x => x.PrimaryText)
+        };
     }
 
     private static void Replace<T>(ObservableCollection<T> target, IEnumerable<T> items)

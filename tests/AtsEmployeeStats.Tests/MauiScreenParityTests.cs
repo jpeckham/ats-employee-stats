@@ -105,6 +105,47 @@ public sealed class MauiScreenParityTests
         Assert.DoesNotContain("BackgroundColor = Colors.White", layout, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void Maui_dashboard_uses_desktop_explorer_master_detail_patterns()
+    {
+        var root = FindRepositoryRoot();
+        var mauiRoot = Path.Combine(root, "src", "AtsEmployeeStats.Maui");
+        var mainPageCode = File.ReadAllText(Path.Combine(mauiRoot, "MainPage.xaml.cs"));
+        var mainPageXaml = File.ReadAllText(Path.Combine(mauiRoot, "MainPage.xaml"));
+
+        Assert.Contains("ExplorerNavigationItem", mainPageCode, StringComparison.Ordinal);
+        Assert.Contains("DetailTabItem", mainPageCode, StringComparison.Ordinal);
+        Assert.Contains("SortableExplorerRowItem", mainPageCode, StringComparison.Ordinal);
+        Assert.Contains("SortActiveRowsCommand", mainPageCode, StringComparison.Ordinal);
+        Assert.Contains("SparklineText", mainPageCode, StringComparison.Ordinal);
+
+        Assert.Contains("ExplorerNavigationItems", mainPageXaml, StringComparison.Ordinal);
+        Assert.Contains("DetailTabs", mainPageXaml, StringComparison.Ordinal);
+        Assert.Contains("ActiveDetailRows", mainPageXaml, StringComparison.Ordinal);
+        Assert.Contains("SortActiveRowsCommand", mainPageXaml, StringComparison.Ordinal);
+        Assert.Contains("SparklineText", mainPageXaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("Text=\"View\"", mainPageXaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("Text=\"Open\"", mainPageXaml, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Maui_detail_pages_use_tabbed_sortable_related_sections()
+    {
+        var root = FindRepositoryRoot();
+        var mauiRoot = Path.Combine(root, "src", "AtsEmployeeStats.Maui");
+        var model = File.ReadAllText(Path.Combine(mauiRoot, "Presentation", "DetailPresentationModels.cs"));
+        var layout = File.ReadAllText(Path.Combine(mauiRoot, "Views", "DetailPageLayout.cs"));
+
+        Assert.Contains("DetailSectionTabItem", model, StringComparison.Ordinal);
+        Assert.Contains("ActiveSectionRows", model, StringComparison.Ordinal);
+        Assert.Contains("SelectSectionCommand", model, StringComparison.Ordinal);
+        Assert.Contains("SortSectionRowsCommand", model, StringComparison.Ordinal);
+
+        Assert.Contains("SectionTabs", layout, StringComparison.Ordinal);
+        Assert.Contains("ActiveSectionRows", layout, StringComparison.Ordinal);
+        Assert.Contains("SortSectionRowsCommand", layout, StringComparison.Ordinal);
+    }
+
     private static void AssertFile(string root, params string[] segments)
     {
         var path = Path.Combine([root, .. segments]);
