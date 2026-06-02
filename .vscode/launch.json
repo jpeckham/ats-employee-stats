@@ -2,7 +2,7 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "ATS Employee Stats",
+      "name": "ATS Employee Stats API",
       "type": "coreclr",
       "request": "launch",
       "program": "${workspaceFolder}/src/AtsEmployeeStats.Api/bin/Debug/net10.0/AtsEmployeeStats.Api.dll",
@@ -25,15 +25,15 @@
       }
     },
     {
-      "name": "ATS Employee Stats MAUI (Windows)",
+      "name": "ATS Employee Stats WPF",
       "type": "coreclr",
       "request": "launch",
-      "program": "${workspaceFolder}/src/AtsEmployeeStats.Maui/bin/Debug/net10.0-windows10.0.19041.0/win-x64/AtsEmployeeStats.Maui.exe",
+      "program": "${workspaceFolder}/src/AtsEmployeeStats.Wpf/bin/Debug/net10.0-windows/AtsEmployeeStats.Wpf.exe",
       "args": [],
-      "cwd": "${workspaceFolder}/src/AtsEmployeeStats.Maui/bin/Debug/net10.0-windows10.0.19041.0/win-x64",
+      "cwd": "${workspaceFolder}/src/AtsEmployeeStats.Wpf/bin/Debug/net10.0-windows",
       "console": "integratedTerminal",
       "stopAtEntry": false,
-      "preLaunchTask": "build maui windows"
+      "preLaunchTask": "build wpf"
     }
   ]
 }
