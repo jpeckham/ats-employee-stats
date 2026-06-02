@@ -2,29 +2,6 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "ATS Employee Stats API",
-      "type": "coreclr",
-      "request": "launch",
-      "program": "${workspaceFolder}/src/AtsEmployeeStats.Api/bin/Debug/net10.0/AtsEmployeeStats.Api.dll",
-      "args": [
-        "--urls",
-        "http://localhost:5087",
-        "--Statistics:HistoryDays",
-        "14"
-      ],
-      "cwd": "${workspaceFolder}/src/AtsEmployeeStats.Api",
-      "env": {
-        "ASPNETCORE_ENVIRONMENT": "Development"
-      },
-      "console": "integratedTerminal",
-      "stopAtEntry": false,
-      "preLaunchTask": "prepare debug",
-      "serverReadyAction": {
-        "action": "openExternally",
-        "pattern": "\\bNow listening on:\\s+(https?://\\S+)"
-      }
-    },
-    {
       "name": "ATS Employee Stats WPF",
       "type": "coreclr",
       "request": "launch",

@@ -14,7 +14,6 @@ public sealed class ArchitectureDependencyTests
 
         Assert.DoesNotContain(references, name => name.StartsWith("AtsEmployeeStats.Application", StringComparison.Ordinal));
         Assert.DoesNotContain(references, name => name.StartsWith("AtsEmployeeStats.Infrastructure", StringComparison.Ordinal));
-        Assert.DoesNotContain(references, name => name.StartsWith("AtsEmployeeStats.Api", StringComparison.Ordinal));
         Assert.DoesNotContain(references, name => name.StartsWith("AtsEmployeeStats.Maui", StringComparison.Ordinal));
     }
 
@@ -24,7 +23,6 @@ public sealed class ArchitectureDependencyTests
         var references = ProjectReferences(typeof(StatisticsService).Assembly);
 
         Assert.DoesNotContain(references, name => name.StartsWith("AtsEmployeeStats.Infrastructure", StringComparison.Ordinal));
-        Assert.DoesNotContain(references, name => name.StartsWith("AtsEmployeeStats.Api", StringComparison.Ordinal));
         Assert.DoesNotContain(references, name => name.StartsWith("AtsEmployeeStats.Maui", StringComparison.Ordinal));
     }
 
@@ -35,7 +33,6 @@ public sealed class ArchitectureDependencyTests
 
         Assert.Contains(references, name => name == "AtsEmployeeStats.Application");
         Assert.Contains(references, name => name == "AtsEmployeeStats.Domain");
-        Assert.DoesNotContain(references, name => name.StartsWith("AtsEmployeeStats.Api", StringComparison.Ordinal));
         Assert.DoesNotContain(references, name => name.StartsWith("AtsEmployeeStats.Maui", StringComparison.Ordinal));
     }
 
