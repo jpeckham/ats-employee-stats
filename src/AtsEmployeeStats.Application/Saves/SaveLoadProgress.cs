@@ -6,6 +6,11 @@ public enum SaveLoadStage
     FilesDiscovered,
     LoadingFiles,
     FileLoaded,
+    ReadingBronze,
+    BuildingStatistics,
+    WritingSilver,
+    WritingGold,
+    LoadingDashboard,
     Completed
 }
 
@@ -18,4 +23,6 @@ public sealed record SaveLoadProgress(
     string Message,
     string? CurrentFile = null,
     int CurrentFileCompletedUnits = 0,
-    int CurrentFileTotalUnits = 0);
+    int CurrentFileTotalUnits = 0,
+    int PhaseCompleted = 0,
+    int PhaseTotal = 0);

@@ -576,17 +576,29 @@ public sealed partial class MainWindowViewModel(
     {
         SaveFileProgressValue = 0;
         SaveContentProgressValue = 0;
-        SaveFileProgressText = "Preparing save import...";
+        SaveFileProgressText = "Preparing save reload...";
         SaveContentProgressText = "Waiting for save contents...";
     }
 
     private void ApplyLoadProgress(SaveLoadProgress progress)
     {
+        if (IsMedallionStage(progress.Stage))
+        {
+            SaveFileProgressValue = Percent(progress.PhaseCompleted, progress.PhaseTotal);
+            SaveContentProgressValue = 0;
+            SaveFileProgressText = progress.Message;
+            SaveContentProgressText = progress.PhaseTotal > 0
+                ? $"Phase progress: {progress.PhaseCompleted:N0} of {progress.PhaseTotal:N0}"
+                : "Preparing this phase...";
+            StatusText = progress.Message;
+            return;
+        }
+
         SaveFileProgressValue = Percent(progress.CompletedFiles, progress.TotalFiles);
         SaveContentProgressValue = Percent(progress.CurrentFileCompletedUnits, progress.CurrentFileTotalUnits);
         SaveFileProgressText = progress.TotalFiles > 0
             ? $"Save files: {progress.CompletedFiles:N0} of {progress.TotalFiles:N0}"
-            : "Discovering save files...";
+            : progress.Message;
         SaveContentProgressText = progress.CurrentFileTotalUnits > 0
             ? $"Current save contents: {progress.CurrentFileCompletedUnits:N0} of {progress.CurrentFileTotalUnits:N0}"
             : "Waiting for save contents...";
@@ -595,6 +607,13 @@ public sealed partial class MainWindowViewModel(
 
     private static double Percent(int completed, int total) =>
         total <= 0 ? 0 : Math.Clamp((double)completed / total * 100, 0, 100);
+
+    private static bool IsMedallionStage(SaveLoadStage stage) =>
+        stage is SaveLoadStage.ReadingBronze or
+            SaveLoadStage.BuildingStatistics or
+            SaveLoadStage.WritingSilver or
+            SaveLoadStage.WritingGold or
+            SaveLoadStage.LoadingDashboard;
 
     private bool CanReloadSavesCommand() => CanReloadSaves;
 

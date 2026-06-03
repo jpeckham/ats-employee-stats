@@ -25,6 +25,13 @@ public sealed class StatisticsReloadUseCase(StatisticsService statisticsService)
         IProgress<SaveLoadProgress>? progress = null)
     {
         await statisticsService.IngestAsync(cancellationToken, progress, force: true);
+        progress?.Report(new SaveLoadProgress(
+            SaveLoadStage.LoadingDashboard,
+            CompletedFiles: 0,
+            TotalFiles: 0,
+            CompletedUnits: 0,
+            TotalUnits: 0,
+            Message: "Loading rebuilt dashboard statistics..."));
         var statistics = await statisticsService.LoadAsync(cancellationToken, progress);
         return StatisticsDashboardMapper.ToDashboardDto(
             statistics,

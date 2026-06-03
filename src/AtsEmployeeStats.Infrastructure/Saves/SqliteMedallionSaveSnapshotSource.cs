@@ -272,9 +272,23 @@ public sealed class SqliteMedallionSaveSnapshotSource(
         var goldHasData = await GoldHasDataAsync(connection, cancellationToken);
         if (anyIngested || !goldHasData || force)
         {
+            progress?.Report(new SaveLoadProgress(
+                SaveLoadStage.ReadingBronze,
+                CompletedFiles: completedFiles,
+                TotalFiles: paths.Count,
+                CompletedUnits: completedUnits,
+                TotalUnits: Math.Max(estimatedTotalUnits, completedUnits),
+                Message: "Reading bronze snapshots from the statistics database..."));
             var allSnapshots = await ReadAllBronzeSnapshotsAsync(connection, cancellationToken);
+            progress?.Report(new SaveLoadProgress(
+                SaveLoadStage.BuildingStatistics,
+                CompletedFiles: completedFiles,
+                TotalFiles: paths.Count,
+                CompletedUnits: completedUnits,
+                TotalUnits: Math.Max(estimatedTotalUnits, completedUnits),
+                Message: "Building silver and gold statistics from bronze snapshots..."));
             var statistics = StatisticsProjection.Build(allSnapshots);
-            await PersistSilverAndGoldAsync(connection, statistics, cancellationToken);
+            await PersistSilverAndGoldAsync(connection, statistics, cancellationToken, progress);
             await SetHighWaterMarkAsync(connection, cancellationToken);
         }
 
@@ -1312,10 +1326,11 @@ public sealed class SqliteMedallionSaveSnapshotSource(
     private static async Task PersistSilverAndGoldAsync(
         SqliteConnection connection,
         AtsStatistics statistics,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        IProgress<SaveLoadProgress>? progress = null)
     {
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
-        foreach (var table in new[]
+        var silverTables = new[]
         {
             "silver_companies",
             "silver_garages",
@@ -1327,6 +1342,11 @@ public sealed class SqliteMedallionSaveSnapshotSource(
             "silver_trailers",
             "silver_cities",
             "silver_routes",
+            "silver_driver_truck_assignments",
+            "silver_driver_garage_assignments"
+        };
+        var goldTables = new[]
+        {
             "gold_company_summary",
             "gold_garage_ranking",
             "gold_garage_drivers",
@@ -1338,16 +1358,28 @@ public sealed class SqliteMedallionSaveSnapshotSource(
             "gold_driver_deadhead_summary",
             "gold_city_profitability",
             "gold_route_profitability",
-            "gold_profit_trends",
-            "silver_driver_truck_assignments",
-            "silver_driver_garage_assignments"
-        })
+            "gold_profit_trends"
+        };
+
+        foreach (var table in silverTables.Concat(goldTables))
         {
             await ExecuteAsync(connection, $"delete from {table}", cancellationToken);
         }
 
+        var companyCount = Math.Max(statistics.Companies.Count, 1);
+        var companyIndex = 0;
         foreach (var company in statistics.Companies)
         {
+            progress?.Report(new SaveLoadProgress(
+                SaveLoadStage.WritingSilver,
+                CompletedFiles: 0,
+                TotalFiles: 0,
+                CompletedUnits: 0,
+                TotalUnits: 0,
+                Message: $"Writing silver tables for {company.DisplayName}...",
+                PhaseCompleted: companyIndex,
+                PhaseTotal: companyCount));
+
             await ExecuteAsync(
                 connection,
                 """
@@ -1594,9 +1626,30 @@ public sealed class SqliteMedallionSaveSnapshotSource(
             }
 
             await ApplyReferenceDriverNamesAsync(connection, cancellationToken);
+
+            progress?.Report(new SaveLoadProgress(
+                SaveLoadStage.WritingGold,
+                CompletedFiles: 0,
+                TotalFiles: 0,
+                CompletedUnits: 0,
+                TotalUnits: 0,
+                Message: $"Writing gold tables for {company.DisplayName}...",
+                PhaseCompleted: companyIndex,
+                PhaseTotal: companyCount));
             await PersistGoldAsync(connection, company, cancellationToken);
             await ApplyReferenceCargoNamesAsync(connection, cancellationToken);
             await ApplyReferenceCityNamesAsync(connection, cancellationToken);
+            companyIndex++;
+
+            progress?.Report(new SaveLoadProgress(
+                SaveLoadStage.WritingGold,
+                CompletedFiles: 0,
+                TotalFiles: 0,
+                CompletedUnits: 0,
+                TotalUnits: 0,
+                Message: $"Finished gold tables for {company.DisplayName}.",
+                PhaseCompleted: companyIndex,
+                PhaseTotal: companyCount));
         }
 
         await transaction.CommitAsync(cancellationToken);

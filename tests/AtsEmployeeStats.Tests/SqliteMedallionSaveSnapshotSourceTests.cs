@@ -517,6 +517,21 @@ public sealed class SqliteMedallionSaveSnapshotSourceTests : IDisposable
     }
 
     [Fact]
+    public async Task IngestAsync_reports_medallion_projection_and_persistence_progress()
+    {
+        await WriteAnalyticSaveAsync();
+        var source = new SqliteMedallionSaveSnapshotSource(_root, _dbPath);
+        var service = new StatisticsService(source);
+        var progress = new List<SaveLoadProgress>();
+
+        await service.IngestAsync(CancellationToken.None, new CapturingProgress(progress), force: true);
+
+        Assert.Contains(progress, p => p.Stage == SaveLoadStage.BuildingStatistics);
+        Assert.Contains(progress, p => p.Stage == SaveLoadStage.WritingSilver && p.PhaseTotal > 0);
+        Assert.Contains(progress, p => p.Stage == SaveLoadStage.WritingGold && p.PhaseTotal > 0);
+    }
+
+    [Fact]
     public async Task StatisticsService_assigns_integer_surrogate_key_to_silver_companies()
     {
         await WriteAnalyticSaveAsync();
