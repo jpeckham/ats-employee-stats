@@ -10,12 +10,17 @@
         MinHeight="680"
         Background="#F4F6F8">
     <Window.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVisibility" />
         <HierarchicalDataTemplate DataType="{x:Type viewModels:ExplorerNodeViewModel}"
                                   ItemsSource="{Binding Children}">
             <TextBlock Text="{Binding Name}"
                        Padding="2"
                        TextTrimming="CharacterEllipsis" />
         </HierarchicalDataTemplate>
+        <Style TargetType="{x:Type TreeViewItem}">
+            <Setter Property="IsExpanded"
+                    Value="{Binding IsExpanded, Mode=TwoWay}" />
+        </Style>
     </Window.Resources>
 
     <DockPanel LastChildFill="True">
@@ -27,10 +32,16 @@
                             Orientation="Horizontal">
                     <Button Content="Refresh"
                             Command="{Binding RefreshCommand}"
+                            IsEnabled="{Binding CanRefreshDashboard}"
                             Width="88"
+                            Margin="0,0,8,0" />
+                    <Button Content="Manage Sources"
+                            Command="{Binding ManageSourcesCommand}"
+                            Width="128"
                             Margin="0,0,8,0" />
                     <Button Content="Reload Saves"
                             Command="{Binding ReloadCommand}"
+                            IsEnabled="{Binding CanReloadSaves}"
                             Width="112" />
                 </StackPanel>
                 <StackPanel>
@@ -55,11 +66,13 @@
             <Border Grid.Column="0"
                     Background="#FFFFFF"
                     BorderBrush="#CBD5E1"
-                    BorderThickness="0,0,1,0">
+                    BorderThickness="0,0,1,0"
+                    Visibility="{Binding IsExplorerVisible, Converter={StaticResource BoolToVisibility}}">
                 <DockPanel>
                     <TextBlock DockPanel.Dock="Top"
                                Text="Explorer"
                                FontWeight="SemiBold"
+                               Foreground="#111827"
                                Padding="12,10"
                                Background="#EEF2F7" />
                     <TreeView ItemsSource="{Binding Explorer.Roots}"
@@ -78,10 +91,41 @@
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
                     <RowDefinition Height="*" />
                 </Grid.RowDefinitions>
 
-                <Grid DataContext="{Binding SelectedDetail}">
+                <Border Grid.RowSpan="5"
+                        Background="White"
+                        BorderBrush="#CBD5E1"
+                        BorderThickness="1"
+                        Padding="28"
+                        Visibility="{Binding IsEmptyStateVisible, Converter={StaticResource BoolToVisibility}}">
+                    <StackPanel MaxWidth="560"
+                                HorizontalAlignment="Center"
+                                VerticalAlignment="Center">
+                        <TextBlock Text="No save sources configured"
+                                   Foreground="#111827"
+                                   FontSize="24"
+                                   FontWeight="SemiBold"
+                                   TextAlignment="Center" />
+                        <TextBlock Text="Set up ATS and ETS2 save locations before importing save data. The setup wizard will search Steam, Documents, and Steam Cloud profile folders, then let you choose what to include."
+                                   Foreground="#64748B"
+                                   FontSize="13"
+                                   TextWrapping="Wrap"
+                                   TextAlignment="Center"
+                                   Margin="0,10,0,18" />
+                        <Button Content="Set Up Sources"
+                                Command="{Binding ManageSourcesCommand}"
+                                Width="150"
+                                Height="34"
+                                HorizontalAlignment="Center" />
+                    </StackPanel>
+                </Border>
+
+                <Grid DataContext="{Binding SelectedDetail}"
+                      Visibility="{Binding DataContext.IsExplorerVisible, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource BoolToVisibility}}">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="Auto" />
@@ -104,6 +148,47 @@
                 </Grid>
 
                 <ItemsControl Grid.Row="1"
+                              ItemsSource="{Binding GameSources}"
+                              Margin="0,12,0,4">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Border BorderBrush="#CBD5E1"
+                                    BorderThickness="1"
+                                    Background="White"
+                                    Padding="8"
+                                    Margin="0,0,0,8">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="120" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="{Binding GameName}"
+                                               VerticalAlignment="Center"
+                                               FontWeight="SemiBold" />
+                                    <StackPanel Grid.Column="1">
+                                        <TextBlock Text="{Binding SourceStatusText}"
+                                                   Foreground="#111827"
+                                                   FontWeight="SemiBold" />
+                                        <TextBlock Text="{Binding SaveLocationsText}"
+                                                   Foreground="#64748B"
+                                                   FontSize="12" />
+                                    </StackPanel>
+                                    <TextBlock Grid.Column="2"
+                                               Text="{Binding SavePath}"
+                                               Foreground="#64748B"
+                                               FontSize="12"
+                                               VerticalAlignment="Center"
+                                               Margin="12,0,0,0"
+                                               TextTrimming="CharacterEllipsis"
+                                               MaxWidth="460" />
+                                </Grid>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+
+                <ItemsControl Grid.Row="2"
                               ItemsSource="{Binding SelectedDetail.Metrics}"
                               Margin="0,12,0,12">
                     <ItemsControl.ItemsPanel>
@@ -132,7 +217,43 @@
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
 
-                <TabControl Grid.Row="2"
+                <Border Grid.Row="3"
+                        BorderBrush="#CBD5E1"
+                        BorderThickness="1"
+                        Background="White"
+                        Padding="10"
+                        Margin="0,0,0,12"
+                        Visibility="{Binding IsLoadProgressVisible, Converter={StaticResource BoolToVisibility}}">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+                        <TextBlock Text="{Binding SaveFileProgressText}"
+                                   FontWeight="SemiBold"
+                                   Foreground="#111827" />
+                        <ProgressBar Grid.Row="1"
+                                     Value="{Binding SaveFileProgressValue}"
+                                     Minimum="0"
+                                     Maximum="100"
+                                     Height="12"
+                                     Margin="0,6,0,10" />
+                        <TextBlock Grid.Row="2"
+                                   Text="{Binding SaveContentProgressText}"
+                                   Foreground="#64748B"
+                                   FontSize="12" />
+                        <ProgressBar Grid.Row="3"
+                                     Value="{Binding SaveContentProgressValue}"
+                                     Minimum="0"
+                                     Maximum="100"
+                                     Height="12"
+                                     Margin="0,6,0,0" />
+                    </Grid>
+                </Border>
+
+                <TabControl Grid.Row="4"
                             ItemsSource="{Binding SelectedDetail.Tabs}"
                             SelectedIndex="{Binding SelectedDetail.SelectedTabIndex, Mode=OneWay}">
                     <TabControl.ItemTemplate>
@@ -195,6 +316,152 @@
                     </TabControl.ContentTemplate>
                 </TabControl>
             </Grid>
+
+            <Border Grid.ColumnSpan="3"
+                    Panel.ZIndex="20"
+                    Background="#990F172A"
+                    Visibility="{Binding IsSourceWizardVisible, Converter={StaticResource BoolToVisibility}}">
+                <Border Width="840"
+                        MaxHeight="720"
+                        Padding="22"
+                        Background="White"
+                        BorderBrush="#CBD5E1"
+                        BorderThickness="1"
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Center">
+                    <Grid DataContext="{Binding CurrentWizardGame}">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+
+                        <DockPanel>
+                            <TextBlock DockPanel.Dock="Right"
+                                       Text="{Binding DataContext.SourceWizardStepText, RelativeSource={RelativeSource AncestorType=Window}}"
+                                       Foreground="#64748B"
+                                       VerticalAlignment="Center" />
+                            <StackPanel>
+                                <TextBlock Text="Game Source Setup"
+                                           Foreground="#111827"
+                                           FontSize="22"
+                                           FontWeight="SemiBold" />
+                                <TextBlock Text="Choose which game saves should be imported into the statistics database."
+                                           Foreground="#64748B"
+                                           FontSize="12" />
+                            </StackPanel>
+                        </DockPanel>
+
+                        <CheckBox Grid.Row="1"
+                                  IsChecked="{Binding HasGame}"
+                                  Margin="0,18,0,12"
+                                  FontWeight="SemiBold">
+                            <TextBlock>
+                                <Run Text="Do you have " />
+                                <Run Text="{Binding FullGameName, Mode=OneWay}" />
+                                <Run Text="?" />
+                            </TextBlock>
+                        </CheckBox>
+
+                        <ScrollViewer Grid.Row="2"
+                                      VerticalScrollBarVisibility="Auto">
+                            <StackPanel>
+                                <TextBlock Text="Install folders found"
+                                           FontWeight="SemiBold"
+                                           Foreground="#111827"
+                                           Margin="0,0,0,6" />
+                                <ItemsControl ItemsSource="{Binding InstallCandidates}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Border BorderBrush="#CBD5E1"
+                                                    BorderThickness="1"
+                                                    Padding="8"
+                                                    Margin="0,0,0,6">
+                                                <Grid>
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="Auto" />
+                                                        <ColumnDefinition Width="*" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <RadioButton IsChecked="{Binding IsSelected}"
+                                                                 GroupName="InstallCandidates"
+                                                                 VerticalAlignment="Center"
+                                                                 Margin="0,0,8,0" />
+                                                    <StackPanel Grid.Column="1">
+                                                        <TextBlock Text="{Binding Path}"
+                                                                   Foreground="#111827"
+                                                                   TextTrimming="CharacterEllipsis" />
+                                                        <TextBlock Text="{Binding ProofText}"
+                                                                   Foreground="#64748B"
+                                                                   FontSize="12" />
+                                                    </StackPanel>
+                                                </Grid>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+
+                                <TextBlock Text="Save locations found"
+                                           FontWeight="SemiBold"
+                                           Foreground="#111827"
+                                           Margin="0,14,0,6" />
+                                <ItemsControl ItemsSource="{Binding SaveRootCandidates}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Border BorderBrush="#CBD5E1"
+                                                    BorderThickness="1"
+                                                    Padding="8"
+                                                    Margin="0,0,0,6">
+                                                <Grid>
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="Auto" />
+                                                        <ColumnDefinition Width="*" />
+                                                        <ColumnDefinition Width="Auto" />
+                                                    </Grid.ColumnDefinitions>
+                                                    <CheckBox IsChecked="{Binding IsSelected}"
+                                                              VerticalAlignment="Center"
+                                                              Margin="0,0,8,0" />
+                                                    <StackPanel Grid.Column="1">
+                                                        <TextBlock Text="{Binding Path}"
+                                                                   Foreground="#111827"
+                                                                   TextTrimming="CharacterEllipsis" />
+                                                        <TextBlock Text="{Binding ProofText}"
+                                                                   Foreground="#64748B"
+                                                                   FontSize="12" />
+                                                    </StackPanel>
+                                                    <TextBlock Grid.Column="2"
+                                                               Text="{Binding SaveFileCount, StringFormat={}{0:N0} saves}"
+                                                               Foreground="#111827"
+                                                               VerticalAlignment="Center"
+                                                               Margin="12,0,0,0" />
+                                                </Grid>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
+                        </ScrollViewer>
+
+                        <DockPanel Grid.Row="3"
+                                   Margin="0,18,0,0">
+                            <StackPanel DockPanel.Dock="Right"
+                                        Orientation="Horizontal">
+                                <Button Content="Back"
+                                        Command="{Binding DataContext.PreviousSourceWizardStepCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                        Width="86"
+                                        Margin="0,0,8,0" />
+                                <Button Content="Next"
+                                        Command="{Binding DataContext.NextSourceWizardStepCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                        Width="86"
+                                        Margin="0,0,8,0" />
+                                <Button Content="Finish"
+                                        Command="{Binding DataContext.FinishSourceWizardCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                        Width="96" />
+                            </StackPanel>
+                        </DockPanel>
+                    </Grid>
+                </Border>
+            </Border>
         </Grid>
     </DockPanel>
 </Window>

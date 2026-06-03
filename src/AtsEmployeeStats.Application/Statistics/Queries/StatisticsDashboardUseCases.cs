@@ -1,6 +1,7 @@
 using AtsEmployeeStats.Application.Saves;
 using AtsEmployeeStats.Application.Statistics.Output;
 using AtsEmployeeStats.Contracts;
+using AtsEmployeeStats.Domain.Statistics;
 
 namespace AtsEmployeeStats.Application.Statistics.Queries;
 
@@ -115,6 +116,7 @@ public sealed class StatisticsDashboardUseCases(StatisticsService statisticsServ
         IProgress<SaveLoadProgress>? progress = null)
     {
         var statistics = await statisticsService.LoadAsync(cancellationToken, progress);
+        statistics = FilterBySourceKey(statistics, options.SourceKey);
         return StatisticsDashboardMapper.ToDashboardDto(
             statistics,
             options.FromDay ?? 0,
@@ -210,6 +212,32 @@ public sealed class StatisticsDashboardUseCases(StatisticsService statisticsServ
 
     private static CompanyDto? FindCompany(DashboardStatisticsDto statistics, string companyId) =>
         statistics.Companies.FirstOrDefault(company => IdEquals(company.Id, companyId));
+
+    private static AtsStatistics FilterBySourceKey(AtsStatistics statistics, string? sourceKey)
+    {
+        if (string.IsNullOrWhiteSpace(sourceKey))
+            return statistics;
+
+        var prefix = $"{NormalizeSourceKey(sourceKey)}:";
+        return statistics with
+        {
+            Companies = statistics.Companies
+                .Where(company => company.Id.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                .ToList()
+        };
+    }
+
+    private static string NormalizeSourceKey(string sourceKey)
+    {
+        var normalized = new string(sourceKey
+            .Trim()
+            .ToLowerInvariant()
+            .Select(character => char.IsLetterOrDigit(character) ? character : '-')
+            .ToArray());
+
+        normalized = string.Join('-', normalized.Split('-', StringSplitOptions.RemoveEmptyEntries));
+        return normalized.Length == 0 ? "default" : normalized;
+    }
 
     private static bool IdEquals(string? left, string? right) =>
         StringComparer.OrdinalIgnoreCase.Equals(left, right);

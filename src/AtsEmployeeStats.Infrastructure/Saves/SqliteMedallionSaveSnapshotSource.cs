@@ -14,10 +14,12 @@ public sealed class SqliteMedallionSaveSnapshotSource(
     string databasePath,
     AtsReferenceDataOptions? referenceDataOptions = null,
     IScsExtractorDownloader? scsExtractorDownloader = null,
-    IScsArchiveExtractor? scsArchiveExtractor = null) : ISaveSnapshotSource, IStatisticsQuerySource, IStatisticsIngestor
+    IScsArchiveExtractor? scsArchiveExtractor = null,
+    string? sourceKeyPrefix = null) : ISaveSnapshotSource, IStatisticsQuerySource, IStatisticsIngestor
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private readonly SiiSaveTextDecoder _decoder = new();
+    private readonly string _rootPath = LocalPath.Normalize(rootPath);
 
     public async Task<IReadOnlyList<SaveSnapshot>> ReadAllAsync(
         CancellationToken cancellationToken,
@@ -26,7 +28,7 @@ public sealed class SqliteMedallionSaveSnapshotSource(
         await using var connection = await OpenDatabaseAsync(cancellationToken);
         await EnsureSchemaAsync(connection, cancellationToken);
 
-        if (!Directory.Exists(rootPath))
+        if (!Directory.Exists(_rootPath))
         {
             progress?.Report(new SaveLoadProgress(
                 SaveLoadStage.Completed,
@@ -172,7 +174,7 @@ public sealed class SqliteMedallionSaveSnapshotSource(
         await EnsureSchemaAsync(connection, cancellationToken);
         await IngestReferenceDataAsync(connection, cancellationToken);
 
-        if (!Directory.Exists(rootPath))
+        if (!Directory.Exists(_rootPath))
         {
             progress?.Report(new SaveLoadProgress(
                 SaveLoadStage.Completed,
@@ -184,7 +186,7 @@ public sealed class SqliteMedallionSaveSnapshotSource(
             return;
         }
 
-        var highWaterMark = await GetHighWaterMarkAsync(connection, cancellationToken);
+        var highWaterMark = force ? null : await GetHighWaterMarkAsync(connection, cancellationToken);
 
         progress?.Report(new SaveLoadProgress(
             SaveLoadStage.DiscoveringFiles,
@@ -323,6 +325,7 @@ public sealed class SqliteMedallionSaveSnapshotSource(
         command.CommandText = """
             create table if not exists bronze_save_files (
                 save_id text primary key,
+                source_key text,
                 full_path text not null,
                 profile_id text not null,
                 save_slot_name text not null,
@@ -646,6 +649,7 @@ public sealed class SqliteMedallionSaveSnapshotSource(
             );
             """;
         await command.ExecuteNonQueryAsync(cancellationToken);
+        await EnsureColumnAsync(connection, "bronze_save_files", "source_key", "text", cancellationToken);
         await EnsureColumnAsync(connection, "silver_trucks", "license_plate", "text", cancellationToken);
         await EnsureColumnAsync(connection, "silver_trucks", "model_name", "text", cancellationToken);
         await EnsureColumnAsync(connection, "silver_trucks", "definition_path", "text", cancellationToken);
@@ -773,7 +777,7 @@ public sealed class SqliteMedallionSaveSnapshotSource(
     private List<string> DiscoverCandidatePaths(DateTime? sinceUtc, CancellationToken cancellationToken)
     {
         return Directory
-            .EnumerateFiles(rootPath, "game.sii", SearchOption.AllDirectories)
+            .EnumerateFiles(_rootPath, "game.sii", SearchOption.AllDirectories)
             .Select(path => new SavePath(path, File.GetLastWriteTimeUtc(path), GetProfileSegment(path), GetSaveSlot(path)))
             .Where(file => sinceUtc is null || file.LastWriteTimeUtc >= sinceUtc)
             .Where(file => !IsBackupPath(file.Path))
@@ -783,11 +787,13 @@ public sealed class SqliteMedallionSaveSnapshotSource(
             .ToList();
     }
 
-    private static FileMetadata ReadFastFileMetadata(string path)
+    private FileMetadata ReadFastFileMetadata(string path)
     {
+        path = LocalPath.Normalize(path);
         var info = new FileInfo(path);
         return new FileMetadata(
             BuildSaveId(path),
+            BuildSourceKey(path),
             path,
             GetProfileSegment(path),
             GetSaveSlot(path),
@@ -831,10 +837,13 @@ public sealed class SqliteMedallionSaveSnapshotSource(
             return null;
         }
 
+        await UpdateCachedFileMetadataAsync(connection, metadata, cancellationToken);
+
         return new SaveSnapshot(
             metadata.FullPath,
             metadata.LastWriteTimeUtc,
-            await ReadBronzeDocumentAsync(connection, metadata.SaveId, cancellationToken));
+            await ReadBronzeDocumentAsync(connection, metadata.SaveId, cancellationToken),
+            metadata.SourceKey);
     }
 
     private async Task<SaveSnapshot?> TryIngestSnapshotAsync(
@@ -878,7 +887,7 @@ public sealed class SqliteMedallionSaveSnapshotSource(
             await InsertUnitsAsync(connection, metadata.SaveId, document, cancellationToken);
             await transaction.CommitAsync(cancellationToken);
 
-            return new SaveSnapshot(metadata.FullPath, metadata.LastWriteTimeUtc, document);
+            return new SaveSnapshot(metadata.FullPath, metadata.LastWriteTimeUtc, document, metadata.SourceKey);
         }
         catch (OperationCanceledException)
         {
@@ -889,6 +898,25 @@ public sealed class SqliteMedallionSaveSnapshotSource(
             await UpsertFileAsync(connection, metadata, "failed", ex.Message, cancellationToken);
             return null;
         }
+    }
+
+    private static async Task UpdateCachedFileMetadataAsync(
+        SqliteConnection connection,
+        FileMetadata metadata,
+        CancellationToken cancellationToken)
+    {
+        await ExecuteAsync(
+            connection,
+            """
+            update bronze_save_files
+            set source_key = $source_key,
+                full_path = $full_path
+            where save_id = $save_id
+            """,
+            cancellationToken,
+            ("$source_key", metadata.SourceKey),
+            ("$full_path", metadata.FullPath),
+            ("$save_id", metadata.SaveId));
     }
 
     private static async Task UpsertFileAsync(
@@ -902,6 +930,7 @@ public sealed class SqliteMedallionSaveSnapshotSource(
         command.CommandText = """
             insert into bronze_save_files (
                 save_id,
+                source_key,
                 full_path,
                 profile_id,
                 save_slot_name,
@@ -914,6 +943,7 @@ public sealed class SqliteMedallionSaveSnapshotSource(
             )
             values (
                 $save_id,
+                $source_key,
                 $full_path,
                 $profile_id,
                 $save_slot_name,
@@ -926,6 +956,7 @@ public sealed class SqliteMedallionSaveSnapshotSource(
             )
             on conflict(save_id) do update set
                 full_path = excluded.full_path,
+                source_key = excluded.source_key,
                 profile_id = excluded.profile_id,
                 save_slot_name = excluded.save_slot_name,
                 last_write_time_utc = excluded.last_write_time_utc,
@@ -936,6 +967,7 @@ public sealed class SqliteMedallionSaveSnapshotSource(
                 error_message = excluded.error_message
             """;
         Add(command, "$save_id", metadata.SaveId);
+        Add(command, "$source_key", metadata.SourceKey);
         Add(command, "$full_path", metadata.FullPath);
         Add(command, "$profile_id", metadata.ProfileSegment);
         Add(command, "$save_slot_name", metadata.SaveSlot);
@@ -1246,11 +1278,11 @@ public sealed class SqliteMedallionSaveSnapshotSource(
         SqliteConnection connection,
         CancellationToken cancellationToken)
     {
-        var rows = new List<(string SaveId, string FullPath, DateTime LastWriteTimeUtc)>();
+        var rows = new List<(string SaveId, string? SourceKey, string FullPath, DateTime LastWriteTimeUtc)>();
         {
             await using var command = connection.CreateCommand();
             command.CommandText = """
-                select save_id, full_path, last_write_time_utc
+                select save_id, source_key, full_path, last_write_time_utc
                 from bronze_save_files
                 where parse_status = 'parsed'
                 order by last_write_time_utc desc
@@ -1260,16 +1292,17 @@ public sealed class SqliteMedallionSaveSnapshotSource(
             {
                 rows.Add((
                     reader.GetString(0),
-                    reader.GetString(1),
-                    DateTime.Parse(reader.GetString(2), null, System.Globalization.DateTimeStyles.RoundtripKind)));
+                    GetNullableString(reader, 1),
+                    reader.GetString(2),
+                    DateTime.Parse(reader.GetString(3), null, System.Globalization.DateTimeStyles.RoundtripKind)));
             }
         }
 
         var snapshots = new List<SaveSnapshot>(rows.Count);
-        foreach (var (saveId, fullPath, lastWriteTimeUtc) in rows)
+        foreach (var (saveId, sourceKey, fullPath, lastWriteTimeUtc) in rows)
         {
             var document = await ReadBronzeDocumentAsync(connection, saveId, cancellationToken);
-            snapshots.Add(new SaveSnapshot(fullPath, lastWriteTimeUtc, document));
+            snapshots.Add(new SaveSnapshot(fullPath, lastWriteTimeUtc, document, sourceKey));
         }
         return snapshots;
     }
@@ -2583,6 +2616,14 @@ public sealed class SqliteMedallionSaveSnapshotSource(
         return Convert.ToHexString(bytes).ToLowerInvariant();
     }
 
+    private string? BuildSourceKey(string path)
+    {
+        if (string.IsNullOrWhiteSpace(sourceKeyPrefix))
+            return null;
+
+        return sourceKeyPrefix;
+    }
+
     private static string GetProfileSegment(string path)
     {
         var parts = path.Split([Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar], StringSplitOptions.RemoveEmptyEntries);
@@ -2625,6 +2666,7 @@ public sealed class SqliteMedallionSaveSnapshotSource(
 
     private sealed record FileMetadata(
         string SaveId,
+        string? SourceKey,
         string FullPath,
         string ProfileSegment,
         string SaveSlot,

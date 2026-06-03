@@ -175,7 +175,7 @@ public static partial class StatisticsProjection
             .ToList();
 
         var companyName = GetCompanyDisplayName(latest);
-        var companyId = NormalizeCompanyId(companyName);
+        var companyId = BuildCompanyId(companyName, latest.SourceKey);
         var trailerToGarage = BuildReverseLookup(garages, "trailers");
         var trailerToJobCount = BuildTrailerJobCounts(units, unitsById);
         var routeStats = BuildRouteStats(missionStats);
@@ -354,7 +354,16 @@ public static partial class StatisticsProjection
     }
 
     private static string GetCompanyKey(SaveSnapshot snapshot) =>
-        NormalizeCompanyId(GetCompanyDisplayName(snapshot));
+        BuildCompanyId(GetCompanyDisplayName(snapshot), snapshot.SourceKey);
+
+    private static string BuildCompanyId(string companyName, string? sourceKey)
+    {
+        var companyId = NormalizeCompanyId(companyName);
+        if (string.IsNullOrWhiteSpace(sourceKey))
+            return companyId;
+
+        return $"{NormalizeCompanyId(sourceKey)}:{companyId}";
+    }
 
     private static string GetCompanyDisplayName(SaveSnapshot snapshot)
     {

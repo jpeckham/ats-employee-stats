@@ -38,7 +38,7 @@ public sealed class TrendChartViewModel
                 Values = values.ToArray(),
                 Fill = null,
                 GeometrySize = 5,
-                LineSmoothness = 0.35
+                LineSmoothness = 0
             }
         ];
         XAxes = [new Axis { Labels = labels?.ToArray() }];
@@ -85,8 +85,9 @@ internal static class CompanyOverviewBuilder
             ("Cities", RowFormatting.Count(company.Cities?.Count ?? 0), "Visited"),
             ("Garages", RowFormatting.Count(company.Garages.Count), "Owned"));
 
-        AddChart(overview, "Profit by Day", ProfitByDay(company.Missions));
-        AddChart(overview, "Jobs by Day", CountByDay(company.Missions));
+        var completeDayMissions = CompleteDayMissions(company.Missions);
+        AddChart(overview, "Profit by Day", ProfitByDay(completeDayMissions));
+        AddChart(overview, "Jobs by Day", CountByDay(completeDayMissions));
         AddChart(overview, "Drivers by Garage", company.Garages.Select(garage => (garage.DisplayName, (long)garage.EmployeeCount)));
         overview.TopLists.Add(new("Top 10 Garages", company.Garages.OrderByDescending(x => x.Profit).Take(10).Select(x => Rows.Garage(company, x))));
         overview.TopLists.Add(new("Top 10 Drivers", company.Drivers.OrderByDescending(x => x.Profit).Take(10).Select(x => Rows.Driver(company, x))));
@@ -240,7 +241,7 @@ internal static class OverviewBuilderHelpers
 
     public static void AddChart(OverviewViewModel overview, string title, IEnumerable<(string Label, long Value)> points)
     {
-        var materialized = points.Where(point => point.Value != 0).ToArray();
+        var materialized = points.ToArray();
         if (materialized.Length == 0)
             return;
 
@@ -263,6 +264,16 @@ internal static class OverviewBuilderHelpers
             .GroupBy(job => job.TimestampDay!.Value)
             .OrderBy(group => group.Key)
             .Select(group => (group.Key.ToString(), (long)group.Count()));
+
+    public static IReadOnlyList<MissionDto> CompleteDayMissions(IEnumerable<MissionDto> jobs)
+    {
+        var timestamped = jobs.Where(job => job.TimestampDay.HasValue).ToArray();
+        if (timestamped.Length == 0)
+            return [];
+
+        var latestDay = timestamped.Max(job => job.TimestampDay!.Value);
+        return [.. timestamped.Where(job => job.TimestampDay!.Value < latestDay)];
+    }
 
     public static void AddRecentJobs(OverviewViewModel overview, CompanyDto company, IEnumerable<MissionDto> jobs, string title)
     {

@@ -25,4 +25,5 @@ public sealed record SiiUnit(
 public sealed record SaveSnapshot(
     string Name,
     DateTimeOffset LastWritten,
-    SiiDocument Document);
+    SiiDocument Document,
+    string? SourceKey = null);

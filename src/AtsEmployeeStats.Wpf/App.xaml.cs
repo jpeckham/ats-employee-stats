@@ -31,26 +31,38 @@ public partial class App : System.Windows.Application
     private static IServiceCollection ConfigureServices()
     {
         var services = new ServiceCollection();
-        services.AddSingleton<SqliteMedallionSaveSnapshotSource>(_ =>
+        services.AddSingleton<IGameSourceDiscovery, LocalGameSourceDiscovery>();
+        services.AddSingleton<IGameSourceSettingsStore>(_ => SqliteGameSourceSettingsStore.CreateDefault());
+        services.AddSingleton<GameSourceManagementUseCase>();
+        services.AddSingleton<IConfiguredGameSaveDiscovery, LocalConfiguredGameSaveDiscovery>();
+        services.AddSingleton<GameSaveCatalogUseCase>();
+        services.AddSingleton<ISaveSnapshotSource>(sp =>
         {
             var dataDirectory = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                 "AtsEmployeeStats");
             Directory.CreateDirectory(dataDirectory);
-            var saveRoot = new GameSaveDiscoveryUseCase(new LocalGameSaveDiscovery())
-                .FindFirstSaveRootAsync(GameSaveKind.AmericanTruckSimulator, CancellationToken.None)
-                .GetAwaiter()
-                .GetResult() ?? Environment.CurrentDirectory;
             var databasePath = Path.Combine(dataDirectory, "ats-employee-stats.db");
-            var referenceDataOptions = new AtsReferenceDataOptions(
-                Enabled: false,
-                GameInstallRoot: null,
-                CacheRoot: Path.Combine(dataDirectory, "reference-cache"));
-
-            return new SqliteMedallionSaveSnapshotSource(saveRoot, databasePath, referenceDataOptions);
+            return new DynamicConfiguredSaveSnapshotSource(
+                loadSources: cancellationToken => sp.GetRequiredService<GameSourceManagementUseCase>()
+                    .DiscoverAsync(cancellationToken),
+                createSource: source =>
+                {
+                    var referenceDataOptions = new AtsReferenceDataOptions(
+                        Enabled: false,
+                        GameInstallRoot: source.InstallPath,
+                        CacheRoot: Path.Combine(dataDirectory, "reference-cache", source.Game.ToString()));
+                    var saveRoot = string.IsNullOrWhiteSpace(source.SavePath)
+                        ? Environment.CurrentDirectory
+                        : source.SavePath;
+                    return new SqliteMedallionSaveSnapshotSource(
+                        saveRoot,
+                        databasePath,
+                        referenceDataOptions,
+                        sourceKeyPrefix: $"{source.Game}:{saveRoot}");
+                });
         });
-        services.AddSingleton<ISaveSnapshotSource>(sp => sp.GetRequiredService<SqliteMedallionSaveSnapshotSource>());
-        services.AddSingleton<IStatisticsIngestor>(sp => sp.GetRequiredService<SqliteMedallionSaveSnapshotSource>());
+        services.AddSingleton<IStatisticsIngestor>(sp => (IStatisticsIngestor)sp.GetRequiredService<ISaveSnapshotSource>());
         services.AddSingleton<StatisticsService>();
         services.AddSingleton<IStatisticsIngestUseCase, StatisticsIngestUseCase>();
         services.AddSingleton<IStatisticsDashboardUseCases, StatisticsDashboardUseCases>();

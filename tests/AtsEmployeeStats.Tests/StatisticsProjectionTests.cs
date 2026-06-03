@@ -113,6 +113,31 @@ public sealed class StatisticsProjectionTests
     }
 
     [Fact]
+    public void Build_partitions_same_company_name_by_save_source()
+    {
+        var statistics = StatisticsProjection.Build(
+        [
+            Snapshot("ats-autosave", "Acme Trucking", 500, sourceKey: "ats:profile-a:autosave"),
+            Snapshot("ets2-autosave", "Acme Trucking", 1200, sourceKey: "ets2:profile-b:autosave")
+        ]);
+
+        Assert.Collection(
+            statistics.Companies.OrderBy(company => company.Id, StringComparer.OrdinalIgnoreCase),
+            company =>
+            {
+                Assert.Equal("ats-profile-a-autosave:acme-trucking", company.Id);
+                Assert.Equal("Acme Trucking", company.DisplayName);
+                Assert.Equal(500, Assert.Single(company.Garages).Profit);
+            },
+            company =>
+            {
+                Assert.Equal("ets2-profile-b-autosave:acme-trucking", company.Id);
+                Assert.Equal("Acme Trucking", company.DisplayName);
+                Assert.Equal(1200, Assert.Single(company.Garages).Profit);
+            });
+    }
+
+    [Fact]
     public void Build_partitions_by_profile_path_when_company_name_is_missing()
     {
         var profileAPath = Path.Combine("profiles", "446573657274204C696E65", "save", "autosave", "game.sii");
@@ -1158,7 +1183,7 @@ public sealed class StatisticsProjectionTests
         Assert.Equal("TRL-001 California", trailer.LicensePlate);
     }
 
-    private static SaveSnapshot Snapshot(string name, string companyName, long garageProfit) =>
+    private static SaveSnapshot Snapshot(string name, string companyName, long garageProfit, string? sourceKey = null) =>
         new(
             name,
             name.EndsWith('2')
@@ -1176,7 +1201,8 @@ public sealed class StatisticsProjectionTests
                   profit_log[0]: {{garageProfit}}
                 }
                 }
-                """));
+                """),
+            sourceKey);
 
     private static SaveSnapshot SnapshotWithoutCompany(string name, long garageProfit) =>
         new(

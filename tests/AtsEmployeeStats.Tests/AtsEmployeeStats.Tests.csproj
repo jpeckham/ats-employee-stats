@@ -1,7 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net10.0</TargetFramework>
+    <TargetFramework>net10.0-windows</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
@@ -24,6 +24,7 @@
     <ProjectReference Include="..\..\src\AtsEmployeeStats.Contracts\AtsEmployeeStats.Contracts.csproj" />
     <ProjectReference Include="..\..\src\AtsEmployeeStats.Infrastructure\AtsEmployeeStats.Infrastructure.csproj" />
     <ProjectReference Include="..\..\src\AtsEmployeeStats.Domain\AtsEmployeeStats.Domain.csproj" />
+    <ProjectReference Include="..\..\src\AtsEmployeeStats.Wpf\AtsEmployeeStats.Wpf.csproj" />
   </ItemGroup>
 
 </Project>

@@ -227,6 +227,49 @@ public sealed class SqliteMedallionSaveSnapshotSourceTests : IDisposable
     }
 
     [Fact]
+    public async Task IngestAsync_partitions_same_company_name_by_configured_game_source()
+    {
+        var atsRoot = Path.Combine(_root, "ats");
+        var ets2Root = Path.Combine(_root, "ets2");
+        await WriteSaveAsync(atsRoot, "autosave", "Acme Trucking", 500, includeGarage: true);
+        await WriteSaveAsync(ets2Root, "autosave", "Acme Trucking", 1200, includeGarage: true);
+        var atsSource = new SqliteMedallionSaveSnapshotSource(atsRoot, _dbPath, sourceKeyPrefix: "ats");
+        var ets2Source = new SqliteMedallionSaveSnapshotSource(ets2Root, _dbPath, sourceKeyPrefix: "ets2");
+
+        await atsSource.IngestAsync(CancellationToken.None, force: true);
+        await ets2Source.IngestAsync(CancellationToken.None, force: true);
+
+        var statistics = await new StatisticsService(ets2Source).LoadAsync(CancellationToken.None);
+
+        Assert.Collection(
+            statistics.Companies.OrderBy(company => company.Id, StringComparer.OrdinalIgnoreCase),
+            company =>
+            {
+                Assert.Equal("ats:acme-trucking", company.Id);
+                Assert.Equal("Acme Trucking", company.DisplayName);
+            },
+            company =>
+            {
+                Assert.Equal("ets2:acme-trucking", company.Id);
+                Assert.Equal("Acme Trucking", company.DisplayName);
+            });
+    }
+
+    [Fact]
+    public async Task IngestAsync_uses_one_company_partition_for_multiple_save_slots_in_same_source()
+    {
+        await WriteSaveAsync(_root, "autosave", "Acme Trucking", 500, includeGarage: true);
+        await WriteSaveAsync(_root, "manual", "Acme Trucking", 1200, includeGarage: true);
+        var source = new SqliteMedallionSaveSnapshotSource(_root, _dbPath, sourceKeyPrefix: "ats:C:\\ATS\\profiles");
+
+        await source.IngestAsync(CancellationToken.None, force: true);
+
+        var statistics = await new StatisticsService(source).LoadAsync(CancellationToken.None);
+        var company = Assert.Single(statistics.Companies);
+        Assert.Equal("ats-c-ats-profiles:acme-trucking", company.Id);
+    }
+
+    [Fact]
     public async Task StatisticsService_persists_enriched_truck_metadata_and_recent_driver_jobs()
     {
         await WriteEnrichedAnalyticSaveAsync();
@@ -565,7 +608,18 @@ public sealed class SqliteMedallionSaveSnapshotSourceTests : IDisposable
         bool includeGarage = false,
         string profileSegment = "506C61796572")
     {
-        var saveDirectory = Path.Combine(_root, "profiles", profileSegment, "save", slotName);
+        return await WriteSaveAsync(_root, slotName, companyName, extraUnits, includeGarage, profileSegment);
+    }
+
+    private static async Task<string> WriteSaveAsync(
+        string rootPath,
+        string slotName,
+        string companyName,
+        int extraUnits = 0,
+        bool includeGarage = false,
+        string profileSegment = "506C61796572")
+    {
+        var saveDirectory = Path.Combine(rootPath, "profiles", profileSegment, "save", slotName);
         Directory.CreateDirectory(saveDirectory);
         var savePath = Path.Combine(saveDirectory, "game.sii");
         var extraContent = string.Concat(Enumerable.Range(0, extraUnits).Select(index => $$"""
@@ -578,7 +632,14 @@ public sealed class SqliteMedallionSaveSnapshotSourceTests : IDisposable
 
             garage : garage.phoenix {
               city: phoenix
+              profit_log[0]: {{extraUnits}}
               employees[0]: driver.alice
+            }
+
+            job : _nameless.job.{{extraUnits}} {
+              income: {{extraUnits}}
+              source_city: phoenix
+              target_city: denver
             }
             """ : string.Empty;
 

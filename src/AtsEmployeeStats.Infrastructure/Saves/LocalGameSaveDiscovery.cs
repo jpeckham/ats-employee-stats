@@ -12,7 +12,7 @@ public sealed class LocalGameSaveDiscovery : IGameSaveDiscovery
     public LocalGameSaveDiscovery()
         : this(
             Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
-            FindSteamPath(),
+            LocalSteamPath.Find(),
             Directory.Exists,
             Directory.EnumerateDirectories)
     {
@@ -24,8 +24,8 @@ public sealed class LocalGameSaveDiscovery : IGameSaveDiscovery
         Func<string, bool> directoryExists,
         Func<string, IEnumerable<string>> enumerateDirectories)
     {
-        _documentsPath = documentsPath;
-        _steamPath = steamPath;
+        _documentsPath = LocalPath.NormalizeOrNull(documentsPath);
+        _steamPath = LocalPath.NormalizeOrNull(steamPath);
         _directoryExists = directoryExists;
         _enumerateDirectories = enumerateDirectories;
     }
@@ -37,6 +37,8 @@ public sealed class LocalGameSaveDiscovery : IGameSaveDiscovery
         cancellationToken.ThrowIfCancellationRequested();
 
         var candidates = BuildCandidates(game)
+            .Select(LocalPath.Normalize)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
             .Select(path => new GameSaveRoot(game, path, _directoryExists(path)))
             .ToList();
         return Task.FromResult<IReadOnlyList<GameSaveRoot>>(candidates);
@@ -62,7 +64,7 @@ public sealed class LocalGameSaveDiscovery : IGameSaveDiscovery
             var userdataRoot = Path.Combine(_steamPath, "userdata");
             if (_directoryExists(userdataRoot))
             {
-                foreach (var userDir in _enumerateDirectories(userdataRoot))
+                foreach (var userDir in _enumerateDirectories(userdataRoot).Select(LocalPath.Normalize))
                 {
                     var remote = Path.Combine(userDir, steamAppId, "remote");
                     yield return Path.Combine(remote, "profiles");
@@ -79,30 +81,5 @@ public sealed class LocalGameSaveDiscovery : IGameSaveDiscovery
             yield return Path.Combine(documentsRoot, "steam_profiles");
             yield return documentsRoot;
         }
-    }
-
-    private static string? FindSteamPath()
-    {
-        if (OperatingSystem.IsWindows())
-        {
-            try
-            {
-                using var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(@"SOFTWARE\Valve\Steam");
-                if (key?.GetValue("SteamPath") is string regPath &&
-                    !string.IsNullOrWhiteSpace(regPath) &&
-                    Directory.Exists(regPath))
-                {
-                    return regPath;
-                }
-            }
-            catch (Exception ex) when (ex is UnauthorizedAccessException or IOException)
-            {
-            }
-        }
-
-        var defaultPath = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86),
-            "Steam");
-        return Directory.Exists(defaultPath) ? defaultPath : null;
     }
 }

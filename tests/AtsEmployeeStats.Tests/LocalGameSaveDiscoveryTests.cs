@@ -39,4 +39,24 @@ public sealed class LocalGameSaveDiscoveryTests
 
         Assert.Contains(roots, root => root.Path == "C:\\Users\\James\\Documents\\Euro Truck Simulator 2\\profiles" && root.Exists);
     }
+
+    [Fact]
+    public async Task FindCandidateRootsAsync_canonicalizes_steam_userdata_paths()
+    {
+        var existing = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "C:\\Steam\\userdata",
+            "C:\\Steam\\userdata\\123\\270880\\remote\\profiles"
+        };
+        var discovery = new LocalGameSaveDiscovery(
+            documentsPath: null,
+            steamPath: "c:/Steam",
+            directoryExists: existing.Contains,
+            enumerateDirectories: path => path == "C:\\Steam\\userdata" ? ["c:/Steam\\userdata\\123"] : []);
+
+        var roots = await discovery.FindCandidateRootsAsync(GameSaveKind.AmericanTruckSimulator, CancellationToken.None);
+
+        Assert.Contains(roots, root => root.Path == "C:\\Steam\\userdata\\123\\270880\\remote\\profiles" && root.Exists);
+        Assert.DoesNotContain(roots, root => root.Path.Contains('/'));
+    }
 }

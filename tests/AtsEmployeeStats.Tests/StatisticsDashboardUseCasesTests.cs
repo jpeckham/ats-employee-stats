@@ -21,6 +21,24 @@ public sealed class StatisticsDashboardUseCasesTests
     }
 
     [Fact]
+    public async Task GetDashboardAsync_filters_companies_to_selected_source_key()
+    {
+        var useCases = CreateUseCases(new AtsStatistics(
+            new DateTimeOffset(2026, 5, 31, 12, 0, 0, TimeSpan.Zero),
+            [
+                CreateCompany("ats-506c61796572-autosave:acme", "Acme Trucking"),
+                CreateCompany("ets2-45545332-manual:acme", "Acme Trucking")
+            ]));
+
+        var dashboard = await useCases.GetDashboardAsync(
+            new DashboardQueryOptions(SourceKey: "Ats:506C61796572:autosave"),
+            CancellationToken.None);
+
+        var company = Assert.Single(dashboard.Companies);
+        Assert.Equal("ats-506c61796572-autosave:acme", company.Id);
+    }
+
+    [Fact]
     public async Task ListCompaniesAsync_returns_dashboard_companies()
     {
         var useCases = CreateUseCases();
@@ -82,7 +100,24 @@ public sealed class StatisticsDashboardUseCasesTests
     }
 
     private static StatisticsDashboardUseCases CreateUseCases() =>
-        new(new StatisticsService(new StubStatisticsSource(CreateStatistics())));
+        CreateUseCases(CreateStatistics());
+
+    private static StatisticsDashboardUseCases CreateUseCases(AtsStatistics statistics) =>
+        new(new StatisticsService(new StubStatisticsSource(statistics)));
+
+    private static CompanyStatistics CreateCompany(string id, string displayName)
+    {
+        var updated = new DateTimeOffset(2026, 5, 31, 12, 0, 0, TimeSpan.Zero);
+        return new CompanyStatistics(
+            id,
+            displayName,
+            updated,
+            [],
+            [],
+            [],
+            [],
+            []);
+    }
 
     private static AtsStatistics CreateStatistics()
     {

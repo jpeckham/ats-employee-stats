@@ -97,6 +97,216 @@ public sealed class WpfPresentationMigrationTests
     }
 
     [Fact]
+    public void Wpf_games_explorer_filters_companies_by_game_source_prefix()
+    {
+        var root = FindRepositoryRoot();
+        var wpfRoot = Path.Combine(root, "src", "AtsEmployeeStats.Wpf");
+        var viewModels = ReadAllSource(wpfRoot, "ViewModels");
+
+        Assert.Contains("SourcePrefix", viewModels, StringComparison.Ordinal);
+        Assert.Contains("company.Id.StartsWith(gameSource.SourcePrefix", viewModels, StringComparison.Ordinal);
+        Assert.Contains("unpartitionedCompanies", viewModels, StringComparison.Ordinal);
+        Assert.Contains("if (unpartitionedCompanies.Count > 0)", viewModels, StringComparison.Ordinal);
+        Assert.Contains("foreach (var company in unpartitionedCompanies.OrderBy", viewModels, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Wpf_games_explorer_groups_by_save_location_and_company_name_not_save_file()
+    {
+        var root = FindRepositoryRoot();
+        var wpfRoot = Path.Combine(root, "src", "AtsEmployeeStats.Wpf");
+        var viewModels = ReadAllSource(wpfRoot, "ViewModels");
+        var app = File.ReadAllText(Path.Combine(wpfRoot, "App.xaml.cs"));
+
+        Assert.Contains("GameSaveCatalogUseCase", app, StringComparison.Ordinal);
+        Assert.Contains("GameSaveRowViewModel", viewModels, StringComparison.Ordinal);
+        Assert.Contains("GameSaves", viewModels, StringComparison.Ordinal);
+        Assert.Contains("ExplorerNodeKind.SaveLocation", viewModels, StringComparison.Ordinal);
+        Assert.Contains("ExplorerNodeKind.SaveLocationCompany", viewModels, StringComparison.Ordinal);
+        Assert.Contains("GroupBy(save => save.SaveRootPath", viewModels, StringComparison.Ordinal);
+        Assert.Contains("GroupBy(company => company.DisplayName", viewModels, StringComparison.Ordinal);
+        Assert.DoesNotContain("BuildSaveNode(save)", viewModels, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Wpf_explorer_expands_startup_path_to_visible_save_location_companies()
+    {
+        var root = FindRepositoryRoot();
+        var wpfRoot = Path.Combine(root, "src", "AtsEmployeeStats.Wpf");
+        var mainWindow = File.ReadAllText(Path.Combine(wpfRoot, "MainWindow.xaml"));
+        var viewModels = ReadAllSource(wpfRoot, "ViewModels");
+
+        Assert.Contains("IsExpanded", viewModels, StringComparison.Ordinal);
+        Assert.Contains("Property=\"IsExpanded\"", mainWindow, StringComparison.Ordinal);
+        Assert.Contains("root.IsExpanded = true", viewModels, StringComparison.Ordinal);
+        Assert.Contains("gameNode.IsExpanded = true", viewModels, StringComparison.Ordinal);
+        Assert.Contains("savesNode.IsExpanded = true", viewModels, StringComparison.Ordinal);
+        Assert.Contains("locationNode.IsExpanded = true", viewModels, StringComparison.Ordinal);
+        Assert.Contains("companiesNode.IsExpanded = true", viewModels, StringComparison.Ordinal);
+        Assert.DoesNotContain("companyNode.IsExpanded = true", viewModels, StringComparison.Ordinal);
+        Assert.Contains("ExpandExplorerToNode", viewModels, StringComparison.Ordinal);
+        Assert.Contains("ExpandAncestorPath", viewModels, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Wpf_save_location_company_nodes_have_detail_collection_children()
+    {
+        var root = FindRepositoryRoot();
+        var wpfRoot = Path.Combine(root, "src", "AtsEmployeeStats.Wpf");
+        var viewModels = ReadAllSource(wpfRoot, "ViewModels");
+
+        Assert.Contains("BuildSaveLocationCompanyNode", viewModels, StringComparison.Ordinal);
+        Assert.Contains("ExplorerNodeKind.SaveLocationCompany => new CompanyDetailViewModel", viewModels, StringComparison.Ordinal);
+        Assert.Contains("AddCollection(companyNode, \"Garages\"", viewModels, StringComparison.Ordinal);
+        Assert.Contains("AddCollection(companyNode, \"Drivers\"", viewModels, StringComparison.Ordinal);
+        Assert.Contains("AddCollection(companyNode, \"Trucks\"", viewModels, StringComparison.Ordinal);
+        Assert.Contains("AddCollection(companyNode, \"Trailers\"", viewModels, StringComparison.Ordinal);
+        Assert.Contains("AddCollection(companyNode, \"Jobs\"", viewModels, StringComparison.Ordinal);
+        Assert.Contains("AddCollection(companyNode, \"Cities\"", viewModels, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Wpf_company_navigation_expands_explorer_to_matching_company_context()
+    {
+        var root = FindRepositoryRoot();
+        var wpfRoot = Path.Combine(root, "src", "AtsEmployeeStats.Wpf");
+        var viewModels = ReadAllSource(wpfRoot, "ViewModels");
+
+        Assert.Contains("ExpandExplorerToNode(target)", viewModels, StringComparison.Ordinal);
+        Assert.Contains("ExpandExplorerToNode(node)", viewModels, StringComparison.Ordinal);
+        Assert.Contains("matching.Node.IsExpanded = true", viewModels, StringComparison.Ordinal);
+        Assert.Contains("ExplorerNodeKind.Company or ExplorerNodeKind.SaveLocationCompany", viewModels, StringComparison.Ordinal);
+        Assert.Contains("ExplorerNodeKind.Garages", viewModels, StringComparison.Ordinal);
+        Assert.Contains("ExplorerNodeKind.Garage", viewModels, StringComparison.Ordinal);
+        Assert.Contains("ExplorerNodeKind.Drivers", viewModels, StringComparison.Ordinal);
+        Assert.Contains("ExplorerNodeKind.Driver", viewModels, StringComparison.Ordinal);
+        Assert.Contains("ExplorerNodeKind.Trucks", viewModels, StringComparison.Ordinal);
+        Assert.Contains("ExplorerNodeKind.Truck", viewModels, StringComparison.Ordinal);
+        Assert.Contains("ExplorerNodeKind.Trailers", viewModels, StringComparison.Ordinal);
+        Assert.Contains("ExplorerNodeKind.Trailer", viewModels, StringComparison.Ordinal);
+        Assert.Contains("ExplorerNodeKind.Jobs", viewModels, StringComparison.Ordinal);
+        Assert.Contains("ExplorerNodeKind.Job", viewModels, StringComparison.Ordinal);
+        Assert.Contains("ExplorerNodeKind.Cities", viewModels, StringComparison.Ordinal);
+        Assert.Contains("ExplorerNodeKind.City", viewModels, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Wpf_save_location_company_selection_aggregates_company_context()
+    {
+        var root = FindRepositoryRoot();
+        var wpfRoot = Path.Combine(root, "src", "AtsEmployeeStats.Wpf");
+        var viewModels = ReadAllSource(wpfRoot, "ViewModels");
+
+        Assert.Contains("ExplorerNodeKind.SaveLocation", viewModels, StringComparison.Ordinal);
+        Assert.Contains("ExplorerNodeKind.SaveLocationCompany", viewModels, StringComparison.Ordinal);
+        Assert.Contains("GetCompaniesForSaveLocation", viewModels, StringComparison.Ordinal);
+        Assert.Contains("Save location selected:", viewModels, StringComparison.Ordinal);
+        Assert.Contains("Company selected:", viewModels, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Wpf_save_location_companies_node_shows_aggregated_company_list()
+    {
+        var root = FindRepositoryRoot();
+        var wpfRoot = Path.Combine(root, "src", "AtsEmployeeStats.Wpf");
+        var viewModels = ReadAllSource(wpfRoot, "ViewModels");
+
+        Assert.Contains("node.Kind == ExplorerNodeKind.Companies && !string.IsNullOrWhiteSpace(node.EntityId)", viewModels, StringComparison.Ordinal);
+        Assert.Contains("Companies selected:", viewModels, StringComparison.Ordinal);
+        Assert.Contains("GetCompaniesForSaveLocation(node.EntityId, _dashboard.Companies)", viewModels, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Wpf_reload_runs_with_progress_ui()
+    {
+        var root = FindRepositoryRoot();
+        var wpfRoot = Path.Combine(root, "src", "AtsEmployeeStats.Wpf");
+        var mainWindow = File.ReadAllText(Path.Combine(wpfRoot, "MainWindow.xaml"));
+        var viewModels = ReadAllSource(wpfRoot, "ViewModels");
+
+        Assert.Contains("IsLoadProgressVisible", mainWindow, StringComparison.Ordinal);
+        Assert.Contains("SaveFileProgressValue", mainWindow, StringComparison.Ordinal);
+        Assert.Contains("SaveContentProgressValue", mainWindow, StringComparison.Ordinal);
+        Assert.Contains("new Progress<SaveLoadProgress>", viewModels, StringComparison.Ordinal);
+        Assert.Contains("Task.Run(() => reloadUseCase.ReloadAsync", viewModels, StringComparison.Ordinal);
+        Assert.Contains("ApplyLoadProgress", viewModels, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Wpf_startup_and_source_discovery_do_not_run_blocking_work_on_dispatcher()
+    {
+        var root = FindRepositoryRoot();
+        var wpfRoot = Path.Combine(root, "src", "AtsEmployeeStats.Wpf");
+        var viewModels = ReadAllSource(wpfRoot, "ViewModels");
+
+        Assert.Contains("await Task.Yield()", viewModels, StringComparison.Ordinal);
+        Assert.Contains("Task.Run(() => gameSourceManagement.RequiresWizardAsync", viewModels, StringComparison.Ordinal);
+        Assert.Contains("Task.Run(() => gameSourceManagement.DiscoverAsync", viewModels, StringComparison.Ordinal);
+        Assert.Contains("Task.Run(() => gameSaveCatalog.FindSaveGamesAsync", viewModels, StringComparison.Ordinal);
+        Assert.Contains("Task.Run(() => dashboardUseCases.GetDashboardAsync", viewModels, StringComparison.Ordinal);
+        Assert.Contains("Task.Run(async ()", viewModels, StringComparison.Ordinal);
+        Assert.Contains("DiscoverCandidatesAsync(game", viewModels, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Wpf_uses_first_run_game_source_wizard_instead_of_raw_source_textboxes()
+    {
+        var root = FindRepositoryRoot();
+        var wpfRoot = Path.Combine(root, "src", "AtsEmployeeStats.Wpf");
+        var mainWindow = File.ReadAllText(Path.Combine(wpfRoot, "MainWindow.xaml"));
+        var viewModels = ReadAllSource(wpfRoot, "ViewModels");
+        var app = File.ReadAllText(Path.Combine(wpfRoot, "App.xaml.cs"));
+
+        Assert.Contains("SqliteGameSourceSettingsStore.CreateDefault()", app, StringComparison.Ordinal);
+        Assert.Contains("IsSourceWizardVisible", mainWindow, StringComparison.Ordinal);
+        Assert.Contains("Do you have", mainWindow, StringComparison.Ordinal);
+        Assert.Contains("InstallCandidates", mainWindow, StringComparison.Ordinal);
+        Assert.Contains("SaveRootCandidates", mainWindow, StringComparison.Ordinal);
+        Assert.Contains("FinishSourceWizardCommand", mainWindow, StringComparison.Ordinal);
+        Assert.Contains("Manage Sources", mainWindow, StringComparison.Ordinal);
+        Assert.Contains("RequiresWizardAsync", viewModels, StringComparison.Ordinal);
+        Assert.Contains("SaveValidatedAsync", viewModels, StringComparison.Ordinal);
+        Assert.DoesNotContain("Content=\"Save Sources\"", mainWindow, StringComparison.Ordinal);
+        Assert.DoesNotContain("ToolTip=\"Install path\"", mainWindow, StringComparison.Ordinal);
+        Assert.DoesNotContain("ToolTip=\"Profile path\"", mainWindow, StringComparison.Ordinal);
+        Assert.DoesNotContain("ToolTip=\"Save path\"", mainWindow, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Wpf_has_clear_empty_state_and_disables_unavailable_actions()
+    {
+        var root = FindRepositoryRoot();
+        var wpfRoot = Path.Combine(root, "src", "AtsEmployeeStats.Wpf");
+        var mainWindow = File.ReadAllText(Path.Combine(wpfRoot, "MainWindow.xaml"));
+        var viewModels = ReadAllSource(wpfRoot, "ViewModels");
+
+        Assert.Contains("No save sources configured", mainWindow, StringComparison.Ordinal);
+        Assert.Contains("Set Up Sources", mainWindow, StringComparison.Ordinal);
+        Assert.Contains("IsEmptyStateVisible", mainWindow, StringComparison.Ordinal);
+        Assert.Contains("CanReloadSaves", mainWindow, StringComparison.Ordinal);
+        Assert.Contains("CanRefreshDashboard", mainWindow, StringComparison.Ordinal);
+        Assert.Contains("IsExplorerVisible", mainWindow, StringComparison.Ordinal);
+        Assert.Contains("public bool CanReloadSaves", viewModels, StringComparison.Ordinal);
+        Assert.Contains("public bool CanRefreshDashboard", viewModels, StringComparison.Ordinal);
+        Assert.Contains("private bool CanReloadSavesCommand()", viewModels, StringComparison.Ordinal);
+        Assert.Contains("private bool CanRefreshDashboardCommand()", viewModels, StringComparison.Ordinal);
+        Assert.Contains("RefreshCommand.NotifyCanExecuteChanged()", viewModels, StringComparison.Ordinal);
+        Assert.Contains("ReloadCommand.NotifyCanExecuteChanged()", viewModels, StringComparison.Ordinal);
+        Assert.Contains("Foreground=\"#111827\"", mainWindow, StringComparison.Ordinal);
+        Assert.DoesNotContain("Background=\"Black\"", mainWindow, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Wpf_source_wizard_read_only_text_bindings_are_one_way()
+    {
+        var root = FindRepositoryRoot();
+        var wpfRoot = Path.Combine(root, "src", "AtsEmployeeStats.Wpf");
+        var mainWindow = File.ReadAllText(Path.Combine(wpfRoot, "MainWindow.xaml"));
+
+        Assert.Contains("Text=\"{Binding FullGameName, Mode=OneWay}\"", mainWindow, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Wpf_has_reusable_overview_controls_and_livecharts()
     {
         var root = FindRepositoryRoot();
@@ -112,6 +322,18 @@ public sealed class WpfPresentationMigrationTests
         AssertFile(wpfRoot, "Controls", "RecentActivityControl.xaml");
         Assert.Contains("OverviewPageControl", mainWindow, StringComparison.Ordinal);
         Assert.Contains("IsOverview", mainWindow, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Wpf_overview_charts_plot_actual_points_without_filtering_or_smoothing_final_values()
+    {
+        var root = FindRepositoryRoot();
+        var wpfRoot = Path.Combine(root, "src", "AtsEmployeeStats.Wpf");
+        var viewModels = ReadAllSource(wpfRoot, "ViewModels");
+
+        Assert.Contains("LineSmoothness = 0", viewModels, StringComparison.Ordinal);
+        Assert.DoesNotContain("points.Where(point => point.Value != 0)", viewModels, StringComparison.Ordinal);
+        Assert.Contains("var materialized = points.ToArray()", viewModels, StringComparison.Ordinal);
     }
 
     [Fact]

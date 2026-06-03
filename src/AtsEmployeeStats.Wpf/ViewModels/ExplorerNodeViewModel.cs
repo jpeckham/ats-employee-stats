@@ -5,6 +5,11 @@ namespace AtsEmployeeStats.Wpf.ViewModels;
 
 public enum ExplorerNodeKind
 {
+    Games,
+    GameSource,
+    GameSaves,
+    SaveLocation,
+    SaveLocationCompany,
     Companies,
     Company,
     Garages,
@@ -36,4 +41,7 @@ public sealed partial class ExplorerNodeViewModel(
     public string? EntityId { get; } = entityId;
 
     public ObservableCollection<ExplorerNodeViewModel> Children { get; } = [];
+
+    [ObservableProperty]
+    private bool isExpanded;
 }
