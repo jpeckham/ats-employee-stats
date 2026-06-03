@@ -393,6 +393,7 @@ public sealed class SqliteMedallionSaveSnapshotSource(
                 profit integer not null,
                 garage_id text,
                 truck_id text,
+                is_player integer not null default 0,
                 primary key (company_id, driver_id)
             );
 
@@ -650,6 +651,7 @@ public sealed class SqliteMedallionSaveSnapshotSource(
             """;
         await command.ExecuteNonQueryAsync(cancellationToken);
         await EnsureColumnAsync(connection, "bronze_save_files", "source_key", "text", cancellationToken);
+        await EnsureColumnAsync(connection, "silver_drivers", "is_player", "integer not null default 0", cancellationToken);
         await EnsureColumnAsync(connection, "silver_trucks", "license_plate", "text", cancellationToken);
         await EnsureColumnAsync(connection, "silver_trucks", "model_name", "text", cancellationToken);
         await EnsureColumnAsync(connection, "silver_trucks", "definition_path", "text", cancellationToken);
@@ -1387,8 +1389,8 @@ public sealed class SqliteMedallionSaveSnapshotSource(
                 await ExecuteAsync(
                     connection,
                     """
-                    insert into silver_drivers (company_id, driver_id, display_name, profit, garage_id, truck_id)
-                    values ($company_id, $driver_id, $display_name, $profit, $garage_id, $truck_id)
+                    insert into silver_drivers (company_id, driver_id, display_name, profit, garage_id, truck_id, is_player)
+                    values ($company_id, $driver_id, $display_name, $profit, $garage_id, $truck_id, $is_player)
                     """,
                     cancellationToken,
                     ("$company_id", company.Id),
@@ -1396,7 +1398,8 @@ public sealed class SqliteMedallionSaveSnapshotSource(
                     ("$display_name", driver.DisplayName),
                     ("$profit", driver.Profit),
                     ("$garage_id", driver.GarageId),
-                    ("$truck_id", driver.TruckId));
+                    ("$truck_id", driver.TruckId),
+                    ("$is_player", driver.IsPlayer ? 1 : 0));
             }
 
             foreach (var truck in company.Trucks)
@@ -1638,7 +1641,7 @@ public sealed class SqliteMedallionSaveSnapshotSource(
         List<string> driverIds;
         await using (var selectCmd = connection.CreateCommand())
         {
-            selectCmd.CommandText = "select distinct driver_id from silver_drivers";
+            selectCmd.CommandText = "select distinct driver_id from silver_drivers where is_player = 0";
             await using var reader = await selectCmd.ExecuteReaderAsync(cancellationToken);
             driverIds = [];
             while (await reader.ReadAsync(cancellationToken))
@@ -1646,7 +1649,7 @@ public sealed class SqliteMedallionSaveSnapshotSource(
         }
 
         await using var updateCmd = connection.CreateCommand();
-        updateCmd.CommandText = "update silver_drivers set display_name = $display_name where driver_id = $driver_id";
+        updateCmd.CommandText = "update silver_drivers set display_name = $display_name where driver_id = $driver_id and is_player = 0";
         var driverParam = updateCmd.Parameters.Add("$driver_id", Microsoft.Data.Sqlite.SqliteType.Text);
         var nameParam = updateCmd.Parameters.Add("$display_name", Microsoft.Data.Sqlite.SqliteType.Text);
 
@@ -2246,7 +2249,7 @@ public sealed class SqliteMedallionSaveSnapshotSource(
         var values = new List<DriverStatistic>();
         await using var command = connection.CreateCommand();
         command.CommandText = """
-            select driver_id, display_name, profit, garage_id, truck_id
+            select driver_id, display_name, profit, garage_id, truck_id, is_player
             from silver_drivers
             where company_id = $company_id
             order by profit desc, display_name
@@ -2260,7 +2263,8 @@ public sealed class SqliteMedallionSaveSnapshotSource(
                 reader.GetString(1),
                 reader.GetInt64(2),
                 GetNullableString(reader, 3),
-                GetNullableString(reader, 4)));
+                GetNullableString(reader, 4),
+                reader.GetInt32(5) != 0));
         }
 
         return values;

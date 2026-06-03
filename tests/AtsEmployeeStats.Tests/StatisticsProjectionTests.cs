@@ -7,6 +7,271 @@ namespace AtsEmployeeStats.Tests;
 public sealed class StatisticsProjectionTests
 {
     [Fact]
+    public void Build_includes_player_character_from_player_unit_and_attributes_relationships()
+    {
+        var older = new SaveSnapshot(
+            "save-1",
+            new DateTimeOffset(2026, 6, 2, 17, 0, 0, TimeSpan.Zero),
+            SiiSaveParser.Parse("""
+                SiiNunit
+                {
+                player : player {
+                  company_name: "Desert Line"
+                  profile_name: "James"
+                  hq_city: phoenix
+                  assigned_truck: truck.old
+                  assigned_trailer: trailer.old
+                }
+
+                driver_player : driver.100 {
+                  profit_log: profit_log.player.old
+                }
+
+                garage : garage.phoenix {
+                  city: phoenix
+                  drivers[0]: driver.100
+                  vehicles[0]: truck.old
+                  trailers[0]: trailer.old
+                }
+
+                vehicle : truck.old {
+                  license_plate: "OLD-1"
+                }
+
+                trailer : trailer.old {
+                  trailer_definition: trailer_def.scs.flatbed
+                }
+
+                profit_log : profit_log.player.old {
+                  stats_data[0]: _nameless.player.job.old
+                }
+
+                profit_log_entry : _nameless.player.job.old {
+                  revenue: 4000
+                  wage: 0
+                  maintenance: 500
+                  fuel: 500
+                  cargo: machinery
+                  source_city: phoenix
+                  destination_city: tucson
+                  timestamp_day: 40
+                }
+                }
+                """));
+
+        var newer = new SaveSnapshot(
+            "save-2",
+            new DateTimeOffset(2026, 6, 2, 18, 0, 0, TimeSpan.Zero),
+            SiiSaveParser.Parse("""
+                SiiNunit
+                {
+                player : player {
+                  company_name: "Desert Line"
+                  profile_name: "James"
+                  hq_city: london
+                  assigned_truck: truck.player
+                  assigned_trailer: trailer.player
+                }
+
+                driver_player : driver.100 {
+                  profit_log: profit_log.player
+                }
+
+                garage : garage.london {
+                  city: london
+                  drivers[0]: driver.100
+                  vehicles[0]: truck.player
+                  trailers[0]: trailer.player
+                }
+
+                vehicle : truck.player {
+                  license_plate: "PLYR-1"
+                }
+
+                trailer : trailer.player {
+                  trailer_definition: trailer_def.scs.reefer
+                }
+
+                profit_log : profit_log.player {
+                  stats_data[0]: _nameless.player.job.1
+                }
+
+                profit_log_entry : _nameless.player.job.1 {
+                  revenue: 8500
+                  wage: 0
+                  maintenance: 500
+                  fuel: 1000
+                  cargo: machinery
+                  source_city: london
+                  destination_city: denver
+                  timestamp_day: 42
+                }
+                }
+                """));
+
+        var company = Assert.Single(StatisticsProjection.Build([older, newer]).Companies);
+
+        var playerDriver = Assert.Single(company.Drivers, driver => driver.IsPlayer);
+        Assert.Equal("player", playerDriver.Id);
+        Assert.Equal("James", playerDriver.DisplayName);
+        Assert.Equal(7000, playerDriver.Profit);
+        Assert.Equal("garage.london", playerDriver.GarageId);
+        Assert.Equal("truck.player", playerDriver.TruckId);
+        Assert.DoesNotContain(company.Drivers, driver => driver.Id == "driver.100");
+
+        var playerMission = Assert.Single(company.Missions, mission => mission.Id == "_nameless.player.job.1");
+        Assert.Equal("player", playerMission.DriverId);
+        Assert.Equal(7000, playerMission.Profit);
+        Assert.Equal("truck.player", playerMission.TruckId);
+        Assert.Equal("trailer.player", playerMission.TrailerId);
+        Assert.Equal("garage.london", playerMission.GarageId);
+        Assert.Equal(42, playerMission.TimestampDay);
+
+        Assert.Contains(company.DriverTruckAssignments, assignment =>
+            assignment.DriverId == "player" &&
+            assignment.TruckId == "truck.old" &&
+            assignment.EffectiveFromSaveName == "save-1" &&
+            assignment.EffectiveToSaveName == "save-2" &&
+            !assignment.IsCurrent);
+        Assert.Contains(company.DriverTruckAssignments, assignment =>
+            assignment.DriverId == "player" &&
+            assignment.TruckId == "truck.player" &&
+            assignment.EffectiveFromSaveName == "save-2" &&
+            assignment.EffectiveToSaveName is null &&
+            assignment.IsCurrent);
+        Assert.Contains(company.DriverGarageAssignments, assignment =>
+            assignment.DriverId == "player" &&
+            assignment.GarageId == "garage.phoenix" &&
+            !assignment.IsCurrent);
+        Assert.Contains(company.DriverGarageAssignments, assignment =>
+            assignment.DriverId == "player" &&
+            assignment.GarageId == "garage.london" &&
+            assignment.IsCurrent);
+    }
+
+    [Fact]
+    public void Build_maps_player_bridge_driver_id_without_assuming_driver_100()
+    {
+        var snapshot = new SaveSnapshot(
+            "save-1",
+            new DateTimeOffset(2026, 6, 2, 18, 0, 0, TimeSpan.Zero),
+            SiiSaveParser.Parse("""
+                SiiNunit
+                {
+                player : player {
+                  profile_name: "James"
+                  hq_city: las_vegas
+                  assigned_truck: truck.player
+                }
+
+                driver_player : driver.105 {
+                  profit_log: profit_log.player
+                }
+
+                garage : garage.las_vegas {
+                  city: las_vegas
+                  drivers[0]: driver.105
+                  vehicles[0]: truck.player
+                }
+
+                vehicle : truck.player {
+                  license_plate: "PLYR-1"
+                }
+
+                profit_log : profit_log.player {
+                  stats_data[0]: _nameless.player.job.1
+                }
+
+                profit_log_entry : _nameless.player.job.1 {
+                  revenue: 8500
+                  wage: 0
+                  maintenance: 500
+                  fuel: 1000
+                  cargo: machinery
+                  source_city: las_vegas
+                  destination_city: denver
+                  timestamp_day: 42
+                }
+                }
+                """));
+
+        var company = Assert.Single(StatisticsProjection.Build([snapshot]).Companies);
+
+        var playerDriver = Assert.Single(company.Drivers, driver => driver.IsPlayer);
+        Assert.Equal("player", playerDriver.Id);
+        Assert.Equal(7000, playerDriver.Profit);
+        Assert.Equal("garage.las_vegas", playerDriver.GarageId);
+        Assert.DoesNotContain(company.Drivers, driver => driver.Id == "driver.105");
+
+        var mission = Assert.Single(company.Missions, mission => mission.Id == "_nameless.player.job.1");
+        Assert.Equal("player", mission.DriverId);
+        Assert.Equal("truck.player", mission.TruckId);
+        Assert.Equal("garage.las_vegas", mission.GarageId);
+    }
+
+    [Fact]
+    public void Build_counts_player_profit_log_entries_even_when_route_fields_are_blank()
+    {
+        var snapshot = new SaveSnapshot(
+            "save-1",
+            new DateTimeOffset(2026, 6, 2, 18, 0, 0, TimeSpan.Zero),
+            SiiSaveParser.Parse("""
+                SiiNunit
+                {
+                player : player {
+                  profile_name: "James"
+                  hq_city: las_vegas
+                  assigned_truck: truck.player
+                }
+
+                driver_player : driver.100 {
+                  profit_log: profit_log.player
+                }
+
+                garage : garage.las_vegas {
+                  city: las_vegas
+                  drivers[0]: driver.100
+                  vehicles[0]: truck.player
+                }
+
+                vehicle : truck.player {
+                  license_plate: "PLYR-1"
+                }
+
+                profit_log : profit_log.player {
+                  stats_data[0]: _nameless.player.job.1
+                }
+
+                profit_log_entry : _nameless.player.job.1 {
+                  revenue: 8500
+                  wage: 0
+                  maintenance: 500
+                  fuel: 1000
+                  distance: 3347
+                  distance_on_job: true
+                  cargo: ""
+                  source_city: ""
+                  destination_city: ""
+                  timestamp_day: 42
+                }
+                }
+                """));
+
+        var company = Assert.Single(StatisticsProjection.Build([snapshot]).Companies);
+
+        var playerDriver = Assert.Single(company.Drivers, driver => driver.IsPlayer);
+        Assert.Equal(7000, playerDriver.Profit);
+
+        var playerMission = Assert.Single(company.Missions, mission => mission.Id == "_nameless.player.job.1");
+        Assert.Equal("player", playerMission.DriverId);
+        Assert.Equal(7000, playerMission.Profit);
+        Assert.Equal("truck.player", playerMission.TruckId);
+        Assert.Equal("garage.las_vegas", playerMission.GarageId);
+        Assert.Null(playerMission.SourceCity);
+        Assert.Null(playerMission.TargetCity);
+    }
+
+    [Fact]
     public void Build_aggregates_garages_drivers_trucks_missions_and_trailer_types_by_profit()
     {
         var snapshot = new SaveSnapshot(

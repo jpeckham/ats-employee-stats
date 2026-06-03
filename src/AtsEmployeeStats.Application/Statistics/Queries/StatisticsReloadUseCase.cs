@@ -30,7 +30,8 @@ public sealed class StatisticsReloadUseCase(StatisticsService statisticsService)
             statistics,
             options.FromDay ?? 0,
             options.ToDay,
-            options.Sort);
+            options.Sort,
+            options.ExcludePlayerDriver);
     }
 
     private static IProgress<SaveLoadProgress>? ToProgress(

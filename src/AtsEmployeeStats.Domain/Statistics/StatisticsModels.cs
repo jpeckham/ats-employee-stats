@@ -114,7 +114,8 @@ public sealed record DriverStatistic(
     string DisplayName,
     long Profit,
     string? GarageId,
-    string? TruckId);
+    string? TruckId,
+    bool IsPlayer = false);
 
 public sealed record TruckStatistic(
     string Id,

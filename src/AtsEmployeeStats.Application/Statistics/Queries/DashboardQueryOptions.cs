@@ -6,4 +6,5 @@ public sealed record DashboardQueryOptions(
     int? FromDay = null,
     int? ToDay = null,
     CollectionSortDto? Sort = null,
-    string? SourceKey = null);
+    string? SourceKey = null,
+    bool ExcludePlayerDriver = false);

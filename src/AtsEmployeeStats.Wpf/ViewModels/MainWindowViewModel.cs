@@ -43,6 +43,9 @@ public sealed partial class MainWindowViewModel(
     private bool isLoadProgressVisible;
 
     [ObservableProperty]
+    private bool excludePlayerDriver;
+
+    [ObservableProperty]
     private double saveFileProgressValue;
 
     [ObservableProperty]
@@ -81,6 +84,13 @@ public sealed partial class MainWindowViewModel(
         OnPropertyChanged(nameof(CanReloadSaves));
         RefreshCommand.NotifyCanExecuteChanged();
         ReloadCommand.NotifyCanExecuteChanged();
+    }
+
+    partial void OnExcludePlayerDriverChanged(bool value)
+    {
+        _query = _query with { ExcludePlayerDriver = value };
+        if (_dashboard is not null && !IsBusy)
+            _ = RefreshAsync();
     }
 
     public async Task LoadAsync()

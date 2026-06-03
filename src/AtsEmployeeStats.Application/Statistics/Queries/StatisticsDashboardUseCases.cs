@@ -121,7 +121,8 @@ public sealed class StatisticsDashboardUseCases(StatisticsService statisticsServ
             statistics,
             options.FromDay ?? 0,
             options.ToDay,
-            options.Sort);
+            options.Sort,
+            options.ExcludePlayerDriver);
     }
 
     public async Task<IReadOnlyList<CompanyDto>> ListCompaniesAsync(

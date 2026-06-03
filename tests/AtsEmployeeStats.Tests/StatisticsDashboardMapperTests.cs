@@ -116,6 +116,73 @@ public sealed class StatisticsDashboardMapperTests
     }
 
     [Fact]
+    public void ToDashboardDto_can_exclude_player_driver_from_aggregate_totals_without_removing_the_driver()
+    {
+        var statistics = new AtsStatistics(
+            new DateTimeOffset(2026, 6, 2, 12, 0, 0, TimeSpan.Zero),
+            [
+                new CompanyStatistics(
+                    "desert-line",
+                    "Desert Line",
+                    new DateTimeOffset(2026, 6, 2, 12, 0, 0, TimeSpan.Zero),
+                    [
+                        new GarageStatistic("garage.phoenix", "Phoenix", 0, 1, 1)
+                    ],
+                    [
+                        new DriverStatistic("player", "James", 0, "garage.phoenix", "truck.player", IsPlayer: true),
+                        new DriverStatistic("driver.alice", "Alice", 0, "garage.phoenix", "truck.alice")
+                    ],
+                    [
+                        new TruckStatistic("truck.player", "Player Truck", 0, "garage.phoenix", "player"),
+                        new TruckStatistic("truck.alice", "Alice Truck", 0, "garage.phoenix", "driver.alice")
+                    ],
+                    [
+                        new MissionStatistic("job.player", "player", "truck.player", null, "flatbed", "machinery", "phoenix", "denver", 5000, 10, GarageId: "garage.phoenix"),
+                        new MissionStatistic("job.alice", "driver.alice", "truck.alice", null, "reefer", "medicine", "phoenix", "tucson", 2000, 10, GarageId: "garage.phoenix")
+                    ],
+                    [],
+                    [],
+                    [],
+                    [
+                        new CityStatistic("phoenix", "Phoenix", true, true, 2, 7000, 0, 7000, 0),
+                        new CityStatistic("denver", "Denver", false, true, 1, 0, 5000, 5000, 1),
+                        new CityStatistic("tucson", "Tucson", false, true, 1, 0, 2000, 2000, 1)
+                    ],
+                    [
+                        new RouteStatistic("phoenix", "denver", 5000, 1, 0, 0),
+                        new RouteStatistic("phoenix", "tucson", 2000, 1, 0, 0)
+                    ],
+                    [
+                        new TrendPointStatistic("company", "desert-line", 10, 7000, 2),
+                        new TrendPointStatistic("garage", "garage.phoenix", 10, 7000, 2),
+                        new TrendPointStatistic("driver", "player", 10, 5000, 1),
+                        new TrendPointStatistic("driver", "driver.alice", 10, 2000, 1),
+                        new TrendPointStatistic("truck", "truck.player", 10, 5000, 1),
+                        new TrendPointStatistic("truck", "truck.alice", 10, 2000, 1)
+                    ])
+            ]);
+
+        var included = Assert.Single(StatisticsDashboardMapper.ToDashboardDto(statistics, fromDay: 10, toDay: 10).Companies);
+        var excluded = Assert.Single(StatisticsDashboardMapper.ToDashboardDto(statistics, fromDay: 10, toDay: 10, excludePlayerDriver: true).Companies);
+
+        Assert.Equal(7000, included.Profit);
+        Assert.Equal(7000, Assert.Single(included.Garages).Profit);
+        Assert.Equal(5000, Assert.Single(included.Drivers, driver => driver.IsPlayer).Profit);
+
+        Assert.Equal(2000, excluded.Profit);
+        Assert.Equal(2000, Assert.Single(excluded.Garages).Profit);
+        Assert.Equal(0, Assert.Single(excluded.Drivers, driver => driver.IsPlayer).Profit);
+        Assert.DoesNotContain(excluded.Missions, mission => mission.DriverId == "player");
+        Assert.Equal(2000, Assert.Single(excluded.Cities!, city => city.Id == "phoenix").OutboundProfit);
+        Assert.DoesNotContain(excluded.Cities!, city => city.Id == "denver");
+        Assert.Equal(2000, Assert.Single(excluded.Routes!).Profit);
+        Assert.Equal(2000, Assert.Single(excluded.ProfitTrend!.Points).Value);
+        Assert.Equal(2000, Assert.Single(Assert.Single(excluded.Garages).Trend!.Points).Value);
+        Assert.Empty(Assert.Single(excluded.Drivers, driver => driver.IsPlayer).Trend!.Points);
+        Assert.Equal(2000, Assert.Single(Assert.Single(excluded.Drivers, driver => driver.Id == "driver.alice").Trend!.Points).Value);
+    }
+
+    [Fact]
     public void ToDashboardDto_shows_correct_player_owned_trailer_count_per_garage()
     {
         var statistics = new AtsStatistics(

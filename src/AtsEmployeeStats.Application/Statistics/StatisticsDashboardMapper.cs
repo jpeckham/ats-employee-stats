@@ -5,7 +5,12 @@ namespace AtsEmployeeStats.Application.Statistics;
 
 public static class StatisticsDashboardMapper
 {
-    public static DashboardStatisticsDto ToDashboardDto(AtsStatistics statistics, int fromDay = 0, int? toDay = null, CollectionSortDto? sort = null)
+    public static DashboardStatisticsDto ToDashboardDto(
+        AtsStatistics statistics,
+        int fromDay = 0,
+        int? toDay = null,
+        CollectionSortDto? sort = null,
+        bool excludePlayerDriver = false)
     {
         var maxGameDay = statistics.Companies
             .SelectMany(c => c.Missions)
@@ -18,14 +23,26 @@ public static class StatisticsDashboardMapper
 
         return new DashboardStatisticsDto(
             statistics.LastUpdated,
-            statistics.Companies.Select(company => ToCompanyDto(company, fromDay, effectiveToDay, sort)).ToList(),
+            statistics.Companies.Select(company => ToCompanyDto(company, fromDay, effectiveToDay, sort, excludePlayerDriver)).ToList(),
             maxGameDay);
     }
 
-    private static CompanyDto ToCompanyDto(CompanyStatistics company, int fromDay, int toDay, CollectionSortDto? sort = null)
+    private static CompanyDto ToCompanyDto(
+        CompanyStatistics company,
+        int fromDay,
+        int toDay,
+        CollectionSortDto? sort = null,
+        bool excludePlayerDriver = false)
     {
+        var playerDriverIds = company.Drivers
+            .Where(driver => driver.IsPlayer)
+            .Select(driver => driver.Id)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
         var filteredMissions = company.Missions
             .Where(m => !m.TimestampDay.HasValue || (m.TimestampDay.Value >= fromDay && m.TimestampDay.Value <= toDay))
+            .Where(m => !excludePlayerDriver ||
+                string.IsNullOrWhiteSpace(m.DriverId) ||
+                !playerDriverIds.Contains(m.DriverId))
             .ToList();
 
         var driverProfit = filteredMissions
@@ -79,7 +96,15 @@ public static class StatisticsDashboardMapper
             MoneyPerDay(garageProfit.GetValueOrDefault(garage.Id), rangeDays),
             garage.EmployeeCount,
             garage.TruckCount,
-            ToSparkline(company.ProfitTrends, "garage", garage.Id, fromDay, toDay),
+            ToSparkline(
+                company.ProfitTrends,
+                "garage",
+                garage.Id,
+                fromDay,
+                toDay,
+                filteredMissions,
+                mission => IdEquals(mission.GarageId, garage.Id),
+                excludePlayerDriver),
             garageTrailerCount.GetValueOrDefault(garage.Id)));
 
         var driverDtos = company.Drivers.Select(driver =>
@@ -95,8 +120,17 @@ public static class StatisticsDashboardMapper
             driver.GarageId,
             driver.TruckId,
             filteredMissions.Count(m => StringComparer.OrdinalIgnoreCase.Equals(m.DriverId, driver.Id)),
-            ToSparkline(company.ProfitTrends, "driver", driver.Id, fromDay, toDay),
-            MoneyPerDay(driverRecentProfit.GetValueOrDefault(driver.Id), recentWindowSize));
+            ToSparkline(
+                company.ProfitTrends,
+                "driver",
+                driver.Id,
+                fromDay,
+                toDay,
+                filteredMissions,
+                mission => IdEquals(mission.DriverId, driver.Id),
+                excludePlayerDriver),
+            MoneyPerDay(driverRecentProfit.GetValueOrDefault(driver.Id), recentWindowSize),
+            driver.IsPlayer);
         });
 
         var truckDtos = company.Trucks.Select(truck => new TruckDto(
@@ -109,7 +143,15 @@ public static class StatisticsDashboardMapper
             truck.ModelName,
             truck.DefinitionPath,
             MoneyPerDay(truckProfit.GetValueOrDefault(truck.Id), rangeDays),
-            ToSparkline(company.ProfitTrends, "truck", truck.Id, fromDay, toDay)));
+            ToSparkline(
+                company.ProfitTrends,
+                "truck",
+                truck.Id,
+                fromDay,
+                toDay,
+                filteredMissions,
+                mission => IdEquals(mission.TruckId, truck.Id),
+                excludePlayerDriver)));
 
         var trailerDtos = company.Trailers.Select(trailer => new TrailerDto(
             trailer.Id,
@@ -119,7 +161,15 @@ public static class StatisticsDashboardMapper
             trailer.IsArticulated,
             trailer.BodyType,
             MoneyPerDay(trailerRangeProfit.GetValueOrDefault(trailer.Id), rangeDays),
-            ToSparkline(company.ProfitTrends, "trailer", trailer.LicensePlate ?? trailer.Id, fromDay, toDay),
+            ToSparkline(
+                company.ProfitTrends,
+                "trailer",
+                trailer.LicensePlate ?? trailer.Id,
+                fromDay,
+                toDay,
+                filteredMissions,
+                mission => IdEquals(mission.TrailerLicensePlate, trailer.LicensePlate) || IdEquals(mission.TrailerId, trailer.Id),
+                excludePlayerDriver),
             trailer.GarageId,
             trailer.LicensePlate));
 
@@ -137,24 +187,8 @@ public static class StatisticsDashboardMapper
             mission.GarageId,
             mission.TrailerLicensePlate));
 
-        var cityDtos = company.Cities.Select(city => new CityDto(
-            city.Id,
-            city.DisplayName,
-            city.HasOwnedGarage,
-            city.IsGarageEligible,
-            city.VisitCount,
-            city.OutboundProfit,
-            city.InboundProfit,
-            city.BidirectionalProfit,
-            city.ExpansionScore));
-
-        var routeDtos = company.Routes.Select(route => new RouteDto(
-            route.OriginCityId,
-            route.DestinationCityId,
-            route.Profit,
-            route.JobCount,
-            route.ProfitPerMile,
-            route.ReturnCoverageRatio));
+        var routeDtos = BuildRouteDtos(filteredMissions);
+        var cityDtos = BuildCityDtos(company.Cities, filteredMissions, routeDtos);
 
         return new(
             company.Id,
@@ -216,7 +250,15 @@ public static class StatisticsDashboardMapper
                 ("jobCount", r => (IComparable?)r.JobCount),
                 ("profitPerMile", r => (IComparable?)r.ProfitPerMile),
                 ("returnCoverage", r => (IComparable?)r.ReturnCoverageRatio)),
-            ToSparkline(company.ProfitTrends, "company", company.Id, fromDay, toDay),
+            ToSparkline(
+                company.ProfitTrends,
+                "company",
+                company.Id,
+                fromDay,
+                toDay,
+                filteredMissions,
+                _ => true,
+                excludePlayerDriver),
             company.DriverTruckAssignments.Select(a => new DriverTruckAssignmentDto(
                 a.DriverId, a.TruckId, a.EffectiveFromSaveName, a.EffectiveToSaveName, a.IsCurrent)).ToList(),
             company.DriverGarageAssignments.Select(a => new DriverGarageAssignmentDto(
@@ -246,13 +288,147 @@ public static class StatisticsDashboardMapper
     private static long MoneyPerDay(long value, int rangeDays) =>
         (long)Math.Round(value / (decimal)rangeDays, MidpointRounding.AwayFromZero);
 
+    private static IReadOnlyList<RouteDto> BuildRouteDtos(IReadOnlyCollection<MissionStatistic> missions)
+    {
+        var directedRoutes = missions
+            .Where(HasRoute)
+            .GroupBy(mission => (Origin: NormalizeCityId(mission.SourceCity)!, Destination: NormalizeCityId(mission.TargetCity)!))
+            .ToDictionary(
+                group => group.Key,
+                group => (Profit: group.Sum(mission => mission.Profit), JobCount: group.Count()));
+
+        return directedRoutes
+            .Select(route =>
+            {
+                directedRoutes.TryGetValue((route.Key.Destination, route.Key.Origin), out var reverse);
+                return new RouteDto(
+                    route.Key.Origin,
+                    route.Key.Destination,
+                    route.Value.Profit,
+                    route.Value.JobCount,
+                    ProfitPerMile: 0,
+                    ReturnCoverageRatio: reverse.JobCount == 0 ? 0 : Math.Min(route.Value.JobCount, reverse.JobCount) / (decimal)Math.Max(route.Value.JobCount, reverse.JobCount));
+            })
+            .OrderBy(route => route.OriginCityId, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(route => route.DestinationCityId, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    private static IReadOnlyList<CityDto> BuildCityDtos(
+        IReadOnlyCollection<CityStatistic> sourceCities,
+        IReadOnlyCollection<MissionStatistic> missions,
+        IReadOnlyCollection<RouteDto> routes)
+    {
+        if (!missions.Any(HasRoute))
+        {
+            return sourceCities
+                .Select(city => new CityDto(
+                    city.Id,
+                    city.DisplayName,
+                    city.HasOwnedGarage,
+                    city.IsGarageEligible,
+                    city.VisitCount,
+                    city.OutboundProfit,
+                    city.InboundProfit,
+                    city.BidirectionalProfit,
+                    city.ExpansionScore))
+                .ToList();
+        }
+
+        var sourceById = sourceCities.ToDictionary(city => city.Id, StringComparer.OrdinalIgnoreCase);
+        var missionCities = missions
+            .Where(HasRoute)
+            .SelectMany(mission => new[] { mission.SourceCity!, mission.TargetCity! })
+            .Select(NormalizeCityId)
+            .Where(city => !string.IsNullOrWhiteSpace(city))
+            .Select(city => city!)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        return missionCities
+            .Select(city =>
+            {
+                var outbound = missions
+                    .Where(mission => StringComparer.OrdinalIgnoreCase.Equals(NormalizeCityId(mission.SourceCity), city))
+                    .ToList();
+                var inbound = missions
+                    .Where(mission => StringComparer.OrdinalIgnoreCase.Equals(NormalizeCityId(mission.TargetCity), city))
+                    .ToList();
+                var bidirectionalProfit = routes
+                    .Where(route =>
+                        (StringComparer.OrdinalIgnoreCase.Equals(route.OriginCityId, city) ||
+                            StringComparer.OrdinalIgnoreCase.Equals(route.DestinationCityId, city)) &&
+                        routes.Any(reverse =>
+                            StringComparer.OrdinalIgnoreCase.Equals(reverse.OriginCityId, route.DestinationCityId) &&
+                            StringComparer.OrdinalIgnoreCase.Equals(reverse.DestinationCityId, route.OriginCityId)))
+                    .Sum(route => route.Profit);
+                sourceById.TryGetValue(city, out var sourceCity);
+                var hasOwnedGarage = sourceCity?.HasOwnedGarage ?? false;
+                var isGarageEligible = sourceCity?.IsGarageEligible ?? false;
+                var expansionScore = (hasOwnedGarage || !isGarageEligible)
+                    ? 0m
+                    : Math.Round(outbound.Count + inbound.Count + (outbound.Sum(mission => mission.Profit) / 10000m), 2, MidpointRounding.AwayFromZero);
+
+                return new CityDto(
+                    city,
+                    sourceCity?.DisplayName ?? FormatRouteEndpoint(city),
+                    hasOwnedGarage,
+                    isGarageEligible,
+                    outbound.Count + inbound.Count,
+                    outbound.Sum(mission => mission.Profit),
+                    inbound.Sum(mission => mission.Profit),
+                    bidirectionalProfit,
+                    expansionScore);
+            })
+            .OrderByDescending(city => city.HasOwnedGarage)
+            .ThenBy(city => city.Id, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    private static bool HasRoute(MissionStatistic mission) =>
+        !string.IsNullOrWhiteSpace(mission.SourceCity) &&
+        !string.IsNullOrWhiteSpace(mission.TargetCity);
+
+    private static string? NormalizeCityId(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? null : value.Trim().ToLowerInvariant();
+
+    private static string FormatRouteEndpoint(string value) =>
+        string.Join(' ', value
+            .Split(['_', '-', ' '], StringSplitOptions.RemoveEmptyEntries)
+            .Select(part => char.ToUpperInvariant(part[0]) + part[1..].ToLowerInvariant()));
+
+    private static bool IdEquals(string? left, string? right) =>
+        !string.IsNullOrWhiteSpace(left) &&
+        !string.IsNullOrWhiteSpace(right) &&
+        StringComparer.OrdinalIgnoreCase.Equals(left, right);
+
     private static SparklineDto ToSparkline(
         IReadOnlyCollection<TrendPointStatistic> trends,
         string entityKind,
         string entityId,
         int fromDay,
-        int toDay)
+        int toDay,
+        IReadOnlyCollection<MissionStatistic>? filteredMissions = null,
+        Func<MissionStatistic, bool>? missionPredicate = null,
+        bool useFilteredMissions = false)
     {
+        if (useFilteredMissions && filteredMissions is not null && missionPredicate is not null)
+        {
+            return new SparklineDto(
+                toDay - fromDay + 1,
+                filteredMissions
+                    .Where(missionPredicate)
+                    .Where(mission => mission.TimestampDay.HasValue)
+                    .GroupBy(mission => mission.TimestampDay!.Value)
+                    .OrderBy(group => group.Key)
+                    .Select(group => new EntityTrendPointDto(
+                        group.Key,
+                        SaveTimeUtc: null,
+                        group.Sum(mission => mission.Profit),
+                        group.Count()))
+                    .ToList());
+        }
+
         var matching = trends
             .Where(trend =>
                 StringComparer.OrdinalIgnoreCase.Equals(trend.EntityKind, entityKind) &&

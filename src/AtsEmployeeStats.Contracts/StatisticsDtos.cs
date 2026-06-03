@@ -42,7 +42,8 @@ public sealed record DriverDto(
     string? TruckId,
     int JobCount,
     SparklineDto? Trend = null,
-    long RecentProfitPerDay = 0);
+    long RecentProfitPerDay = 0,
+    bool IsPlayer = false);
 
 public sealed record TruckDto(
     string Id,

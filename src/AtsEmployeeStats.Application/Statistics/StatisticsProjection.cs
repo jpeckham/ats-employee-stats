@@ -7,6 +7,8 @@ namespace AtsEmployeeStats.Application.Statistics;
 
 public static partial class StatisticsProjection
 {
+    private const string PlayerDriverId = "player";
+
     public static AtsStatistics Build(IReadOnlyCollection<SaveSnapshot> snapshots)
     {
         if (snapshots.Count == 0)
@@ -53,16 +55,30 @@ public static partial class StatisticsProjection
         var trailers = units.Where(unit => unit.TypeEquals("trailer")).ToList();
         var jobs = units.Where(unit => unit.TypeEquals("job") || unit.TypeEquals("delivery_log_entry")).ToList();
 
+        var playerDriver = BuildPlayerDriverUnit(units, latest.Name);
+        var rawPlayerDriverId = FindPlayerDriverBridge(units)?.Id;
         var driverToGarage = BuildReverseLookup(garages, "employees", "drivers");
+        ApplyPlayerGarageLookup(driverToGarage, playerDriver, garages, rawPlayerDriverId);
         var truckToGarage = BuildReverseLookup(garages, "vehicles");
 
         var drivers = units
-            .Where(unit => unit.TypeEquals("driver") || unit.TypeEquals("driver_ai"))
-            .Where(unit => driverToGarage.ContainsKey(unit.Id))
+            .Where(unit =>
+                (unit.TypeEquals("driver") || unit.TypeEquals("driver_ai")) &&
+                !IsRawPlayerDriverBridge(unit, rawPlayerDriverId) &&
+                driverToGarage.ContainsKey(unit.Id))
+            .Concat(playerDriver is null ? [] : [playerDriver])
+            .GroupBy(unit => unit.Id, StringComparer.OrdinalIgnoreCase)
+            .Select(group => group.First())
             .ToList();
+        var playerTruckIds = drivers
+            .Where(IsPlayerDriverUnit)
+            .Select(GetPlayerTruckId)
+            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .Select(id => id!)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
         var trucks = units
             .Where(unit => unit.TypeEquals("vehicle") || unit.TypeEquals("truck"))
-            .Where(unit => truckToGarage.ContainsKey(unit.Id))
+            .Where(unit => truckToGarage.ContainsKey(unit.Id) || playerTruckIds.Contains(unit.Id))
             .ToList();
         var driverToTruck = BuildDriverTruckLookup(drivers, trucks, garages);
         var truckToDriver = driverToTruck
@@ -91,10 +107,11 @@ public static partial class StatisticsProjection
         var driverStats = drivers
             .Select(driver => new DriverStatistic(
                 driver.Id,
-                FirstKnownValue(driver, "name", "surname") ?? driver.Id,
+                BuildDriverDisplayName(driver),
                 SumProfitLog(driver, unitsById),
                 driverToGarage.GetValueOrDefault(driver.Id),
-                driverToTruck.GetValueOrDefault(driver.Id)))
+                driverToTruck.GetValueOrDefault(driver.Id),
+                IsPlayerDriverUnit(driver)))
             .OrderByDescending(driver => driver.Profit)
             .ThenBy(driver => driver.DisplayName, StringComparer.OrdinalIgnoreCase)
             .ToList();
@@ -217,15 +234,29 @@ public static partial class StatisticsProjection
         {
             var units = snapshot.Document.Units;
             var garages = units.Where(u => u.TypeEquals("garage")).Where(IsOwnedGarage).ToList();
+            var playerDriver = BuildPlayerDriverUnit(units, snapshot.Name);
+            var rawPlayerDriverId = FindPlayerDriverBridge(units)?.Id;
             var driverToGarageSnapshot = BuildReverseLookup(garages, "employees", "drivers");
+            ApplyPlayerGarageLookup(driverToGarageSnapshot, playerDriver, garages, rawPlayerDriverId);
             var truckToGarage = BuildReverseLookup(garages, "vehicles");
             var drivers = units
-                .Where(u => u.TypeEquals("driver") || u.TypeEquals("driver_ai"))
-                .Where(u => driverToGarageSnapshot.ContainsKey(u.Id))
+                .Where(u =>
+                    (u.TypeEquals("driver") || u.TypeEquals("driver_ai")) &&
+                    !IsRawPlayerDriverBridge(u, rawPlayerDriverId) &&
+                    driverToGarageSnapshot.ContainsKey(u.Id))
+                .Concat(playerDriver is null ? [] : [playerDriver])
+                .GroupBy(u => u.Id, StringComparer.OrdinalIgnoreCase)
+                .Select(g => g.First())
                 .ToList();
+            var playerTruckIds = drivers
+                .Where(IsPlayerDriverUnit)
+                .Select(GetPlayerTruckId)
+                .Where(id => !string.IsNullOrWhiteSpace(id))
+                .Select(id => id!)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
             var trucks = units
                 .Where(u => u.TypeEquals("vehicle") || u.TypeEquals("truck"))
-                .Where(u => truckToGarage.ContainsKey(u.Id))
+                .Where(u => truckToGarage.ContainsKey(u.Id) || playerTruckIds.Contains(u.Id))
                 .ToList();
             var driverToTruckSnapshot = BuildDriverTruckLookup(drivers, trucks, garages);
 
@@ -305,14 +336,28 @@ public static partial class StatisticsProjection
             .ToDictionary(pair => pair.TrailerId, pair => pair.Type!, StringComparer.OrdinalIgnoreCase);
         var entryToDriver = BuildEntryToDriverMap(units, unitsById);
         var snapshotGarages = units.Where(u => u.TypeEquals("garage")).Where(IsOwnedGarage).ToList();
+        var playerDriver = BuildPlayerDriverUnit(units, snapshot.Name);
+        var rawPlayerDriverId = FindPlayerDriverBridge(units)?.Id;
         var driverToGarage = BuildReverseLookup(snapshotGarages, "employees", "drivers");
+        ApplyPlayerGarageLookup(driverToGarage, playerDriver, snapshotGarages, rawPlayerDriverId);
         var truckToGarage = BuildReverseLookup(snapshotGarages, "vehicles");
         var drivers = units
-            .Where(unit => unit.TypeEquals("driver") || unit.TypeEquals("driver_ai"))
+            .Where(unit =>
+                (unit.TypeEquals("driver") || unit.TypeEquals("driver_ai")) &&
+                !IsRawPlayerDriverBridge(unit, rawPlayerDriverId))
+            .Concat(playerDriver is null ? [] : [playerDriver])
+            .GroupBy(unit => unit.Id, StringComparer.OrdinalIgnoreCase)
+            .Select(group => group.First())
             .ToList();
+        var playerTruckIds = drivers
+            .Where(IsPlayerDriverUnit)
+            .Select(GetPlayerTruckId)
+            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .Select(id => id!)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
         var trucks = units
             .Where(unit => unit.TypeEquals("vehicle") || unit.TypeEquals("truck"))
-            .Where(unit => truckToGarage.ContainsKey(unit.Id))
+            .Where(unit => truckToGarage.ContainsKey(unit.Id) || playerTruckIds.Contains(unit.Id))
             .ToList();
         var ownedTruckIds = trucks
             .Select(truck => truck.Id)
@@ -320,7 +365,7 @@ public static partial class StatisticsProjection
         var driverToTruck = BuildDriverTruckLookup(drivers, trucks, snapshotGarages);
         // profit_log_entry has no trailer field — infer trailer from driver's current assignment
         var driverToTrailer = drivers
-            .Select(d => (DriverId: d.Id, TrailerId: FirstKnownValue(d, "assigned_trailer")))
+            .Select(d => (DriverId: d.Id, TrailerId: FirstKnownValue(d, "assigned_trailer", "my_trailer")))
             .Where(pair => !string.IsNullOrWhiteSpace(pair.TrailerId))
             .ToDictionary(pair => pair.DriverId, pair => pair.TrailerId!, StringComparer.OrdinalIgnoreCase);
 
@@ -452,8 +497,10 @@ public static partial class StatisticsProjection
         var profit = job.TypeEquals("profit_log_entry")
             ? ProfitFromEntry(job)
             : FirstLongValue(job, "income", "revenue", "profit", "pay");
+        var driverId = FirstKnownValue(job, "driver", "employee") ?? entryToDriver?.GetValueOrDefault(job.Id);
 
         if (job.TypeEquals("profit_log_entry") &&
+            !StringComparer.OrdinalIgnoreCase.Equals(driverId, PlayerDriverId) &&
             (string.IsNullOrWhiteSpace(cargo) ||
                 string.IsNullOrWhiteSpace(sourceCity) ||
                 string.IsNullOrWhiteSpace(targetCity)))
@@ -463,7 +510,7 @@ public static partial class StatisticsProjection
 
         return new MissionStatistic(
             job.Id,
-            FirstKnownValue(job, "driver", "employee") ?? entryToDriver?.GetValueOrDefault(job.Id),
+            driverId,
             FirstKnownValue(job, "truck", "vehicle"),
             trailerId,
             trailerType ?? "unknown",
@@ -560,7 +607,7 @@ public static partial class StatisticsProjection
         IReadOnlyDictionary<string, SiiUnit> unitsById)
     {
         var result = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
-        var player = units.FirstOrDefault(u => u.TypeEquals("player") || u.TypeEquals("driver_player"));
+        var player = FindPlayerUnit(units);
         if (player is null) return result;
 
         var trailerIds = player.GetArray("trailers");
@@ -741,16 +788,118 @@ public static partial class StatisticsProjection
         IReadOnlyDictionary<string, SiiUnit> unitsById)
     {
         var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var driver in units.Where(u => u.TypeEquals("driver") || u.TypeEquals("driver_ai")))
+        var rawPlayerDriverId = FindPlayerDriverBridge(units)?.Id;
+
+        foreach (var driver in units.Where(u => u.TypeEquals("driver") || u.TypeEquals("driver_ai") || u.TypeEquals("driver_player")))
         {
             var profitLogId = FirstKnownValue(driver, "profit_log");
             if (profitLogId is null || !unitsById.TryGetValue(profitLogId, out var profitLog))
                 continue;
+            var driverId = IsRawPlayerDriverBridge(driver, rawPlayerDriverId)
+                ? PlayerDriverId
+                : driver.Id;
             foreach (var entryId in profitLog.GetArray("stats_data").Values.Select(CleanSiiValue).Where(v => v is not null))
-                map.TryAdd(entryId!, driver.Id);
+                map.TryAdd(entryId!, driverId);
         }
         return map;
     }
+
+    private static SiiUnit? BuildPlayerDriverUnit(IReadOnlyList<SiiUnit> units, string snapshotName)
+    {
+        var player = FindPlayerUnit(units);
+        if (player is null)
+        {
+            return null;
+        }
+
+        var values = new Dictionary<string, string>(player.Values, StringComparer.OrdinalIgnoreCase);
+        var bridge = FindPlayerDriverBridge(units);
+        if (bridge is not null)
+        {
+            CopyFirstKnownValue(values, bridge, "profit_log");
+        }
+
+        var profileName = GetProfileDisplayName(snapshotName);
+        if (!string.IsNullOrWhiteSpace(profileName))
+        {
+            values.TryAdd("profile_name", profileName);
+        }
+
+        if (FirstKnownValue(player, "hq_city", "assigned_truck", "my_truck", "assigned_trailer", "my_trailer") is null &&
+            FirstKnownValue(bridge, "profit_log") is null)
+        {
+            return null;
+        }
+
+        return new SiiUnit("player", PlayerDriverId, values, player.Arrays);
+    }
+
+    private static SiiUnit? FindPlayerUnit(IReadOnlyList<SiiUnit> units) =>
+        units.FirstOrDefault(unit => unit.TypeEquals("player"));
+
+    private static SiiUnit? FindPlayerDriverBridge(IReadOnlyList<SiiUnit> units) =>
+        units.FirstOrDefault(unit => unit.TypeEquals("driver_player"));
+
+    private static void CopyFirstKnownValue(Dictionary<string, string> values, SiiUnit unit, params string[] keys)
+    {
+        foreach (var key in keys)
+        {
+            var value = CleanSiiValue(unit.GetValue(key));
+            if (!string.IsNullOrWhiteSpace(value))
+            {
+                values[key] = value;
+                return;
+            }
+        }
+    }
+
+    private static void ApplyPlayerGarageLookup(
+        IDictionary<string, string> driverToGarage,
+        SiiUnit? playerDriver,
+        IReadOnlyCollection<SiiUnit> garages,
+        string? rawPlayerDriverId)
+    {
+        if (playerDriver is null)
+        {
+            return;
+        }
+
+        if (!string.IsNullOrWhiteSpace(rawPlayerDriverId) &&
+            driverToGarage.TryGetValue(rawPlayerDriverId, out var rawGarageId))
+        {
+            driverToGarage.Remove(rawPlayerDriverId);
+            driverToGarage[PlayerDriverId] = rawGarageId;
+        }
+
+        var hqCity = NormalizeCityId(FirstKnownValue(playerDriver, "hq_city"));
+        if (hqCity is null)
+        {
+            return;
+        }
+
+        var hqGarageId = $"garage.{hqCity}";
+        var ownedHqGarage = garages.FirstOrDefault(garage =>
+            StringComparer.OrdinalIgnoreCase.Equals(garage.Id, hqGarageId));
+        if (ownedHqGarage is not null)
+        {
+            driverToGarage[PlayerDriverId] = ownedHqGarage.Id;
+        }
+    }
+
+    private static string? GetPlayerTruckId(SiiUnit driver) =>
+        FirstKnownValue(driver, "assigned_truck", "my_truck", "truck", "vehicle");
+
+    private static bool IsPlayerDriverUnit(SiiUnit unit) =>
+        unit.TypeEquals("player") && StringComparer.OrdinalIgnoreCase.Equals(unit.Id, PlayerDriverId);
+
+    private static bool IsRawPlayerDriverBridge(SiiUnit unit, string? rawPlayerDriverId) =>
+        !string.IsNullOrWhiteSpace(rawPlayerDriverId) &&
+        StringComparer.OrdinalIgnoreCase.Equals(unit.Id, rawPlayerDriverId);
+
+    private static string BuildDriverDisplayName(SiiUnit driver) =>
+        IsPlayerDriverUnit(driver)
+            ? FirstKnownValue(driver, "profile_name", "player_name", "name", "surname", "company_name", "company") ?? driver.Id
+            : FirstKnownValue(driver, "name", "surname") ?? driver.Id;
 
     private static bool HasRoute(MissionStatistic mission) =>
         !string.IsNullOrWhiteSpace(mission.SourceCity) &&
@@ -809,7 +958,7 @@ public static partial class StatisticsProjection
         IReadOnlyCollection<SiiUnit> garages)
     {
         var lookup = drivers
-            .Select(driver => (DriverId: driver.Id, TruckId: FirstKnownValue(driver, "assigned_truck", "truck", "vehicle")))
+            .Select(driver => (DriverId: driver.Id, TruckId: FirstKnownValue(driver, "assigned_truck", "my_truck", "truck", "vehicle")))
             .Where(pair => !string.IsNullOrWhiteSpace(pair.TruckId))
             .ToDictionary(pair => pair.DriverId, pair => pair.TruckId!, StringComparer.OrdinalIgnoreCase);
 
