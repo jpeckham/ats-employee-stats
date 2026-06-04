@@ -209,7 +209,7 @@ public static partial class StatisticsProjection
             truckStats,
             missionStats,
             trailerStats,
-            BuildDriverRecentJobs(drivers, unitsById, driverToTruck),
+            BuildDriverRecentJobs(drivers, units, unitsById, driverToTruck),
             individualTrailerStats,
             cityStats,
             routeStats,
@@ -369,13 +369,15 @@ public static partial class StatisticsProjection
             .Where(pair => !string.IsNullOrWhiteSpace(pair.TrailerId))
             .ToDictionary(pair => pair.DriverId, pair => pair.TrailerId!, StringComparer.OrdinalIgnoreCase);
 
+        var deliveryRouteLookup = BuildDeliveryLogRouteLookup(units, unitsById);
+
         return units
             .Where(unit => unit.TypeEquals("job") ||
                 unit.TypeEquals("delivery_log_entry") ||
                 unit.TypeEquals("profit_log_entry"))
             .Select(job =>
             {
-                var mission = BuildMission(job, trailerTypesByTrailer, unitsById, entryToDriver);
+                var mission = BuildMission(job, trailerTypesByTrailer, unitsById, entryToDriver, deliveryRouteLookup);
                 var keyMission = mission;
                 if (string.IsNullOrWhiteSpace(mission.TrailerId) &&
                     !string.IsNullOrWhiteSpace(mission.DriverId) &&
@@ -471,7 +473,8 @@ public static partial class StatisticsProjection
         SiiUnit job,
         IReadOnlyDictionary<string, string> trailerTypesByTrailer,
         IReadOnlyDictionary<string, SiiUnit> unitsById,
-        IReadOnlyDictionary<string, string>? entryToDriver = null)
+        IReadOnlyDictionary<string, string>? entryToDriver = null,
+        IReadOnlyDictionary<(int Day, long Revenue), (string? Source, string? Target, string? Cargo)>? deliveryRouteLookup = null)
     {
         if (job.TypeEquals("delivery_log_entry"))
         {
@@ -494,6 +497,21 @@ public static partial class StatisticsProjection
         var cargo = FirstKnownValue(job, "cargo", "cargo_id");
         var sourceCity = FirstKnownValue(job, "source_city", "source_city_id", "origin_city");
         var targetCity = FirstKnownValue(job, "target_city", "destination_city", "destination_city_id");
+
+        if (job.TypeEquals("profit_log_entry") &&
+            deliveryRouteLookup is not null &&
+            (string.IsNullOrWhiteSpace(sourceCity) || string.IsNullOrWhiteSpace(targetCity) || string.IsNullOrWhiteSpace(cargo)))
+        {
+            var entryRevenue = FirstLongValue(job, "revenue", "income", "profit", "pay");
+            var entryDay = FirstIntValue(job, "timestamp_day");
+            if (entryRevenue > 0 && entryDay is not null &&
+                deliveryRouteLookup.TryGetValue((entryDay.Value, entryRevenue), out var route))
+            {
+                if (string.IsNullOrWhiteSpace(sourceCity)) sourceCity = route.Source;
+                if (string.IsNullOrWhiteSpace(targetCity)) targetCity = route.Target;
+                if (string.IsNullOrWhiteSpace(cargo)) cargo = route.Cargo;
+            }
+        }
         var profit = job.TypeEquals("profit_log_entry")
             ? ProfitFromEntry(job)
             : FirstLongValue(job, "income", "revenue", "profit", "pay");
@@ -1033,19 +1051,24 @@ public static partial class StatisticsProjection
 
     private static IReadOnlyList<DriverRecentJobStatistic> BuildDriverRecentJobs(
         IReadOnlyCollection<SiiUnit> drivers,
+        IReadOnlyList<SiiUnit> allUnits,
         IReadOnlyDictionary<string, SiiUnit> unitsById,
-        IReadOnlyDictionary<string, string> driverToTruck) =>
-        drivers
-            .SelectMany(driver => BuildDriverRecentJobs(driver, unitsById, driverToTruck.GetValueOrDefault(driver.Id)))
+        IReadOnlyDictionary<string, string> driverToTruck)
+    {
+        var deliveryRouteLookup = BuildDeliveryLogRouteLookup(allUnits, unitsById);
+        return drivers
+            .SelectMany(driver => BuildDriverRecentJobs(driver, unitsById, driverToTruck.GetValueOrDefault(driver.Id), deliveryRouteLookup))
             .OrderByDescending(job => job.TimestampDay ?? int.MinValue)
             .ThenByDescending(job => job.Profit)
             .ThenBy(job => job.Id, StringComparer.OrdinalIgnoreCase)
             .ToList();
+    }
 
     private static IEnumerable<DriverRecentJobStatistic> BuildDriverRecentJobs(
         SiiUnit driver,
         IReadOnlyDictionary<string, SiiUnit> unitsById,
-        string? currentTruckId)
+        string? currentTruckId,
+        IReadOnlyDictionary<(int Day, long Revenue), (string? Source, string? Target, string? Cargo)> deliveryRouteLookup)
     {
         var profitLogId = FirstKnownValue(driver, "profit_log");
         if (profitLogId is null || !unitsById.TryGetValue(profitLogId, out var profitLog))
@@ -1067,6 +1090,22 @@ public static partial class StatisticsProjection
             var cargo = FirstKnownValue(entry, "cargo", "cargo_id");
             var sourceCity = FirstKnownValue(entry, "source_city", "source_city_id", "origin_city");
             var targetCity = FirstKnownValue(entry, "destination_city", "target_city", "destination_city_id");
+            var timestampDay = FirstIntValue(entry, "timestamp_day");
+
+            if (string.IsNullOrWhiteSpace(sourceCity) || string.IsNullOrWhiteSpace(targetCity))
+            {
+                // Player profit_log_entry units don't store source/destination cities.
+                // Correlate with the economy's delivery_log_entry by (day, revenue) to get route info.
+                if (revenue > 0 &&
+                    timestampDay is not null &&
+                    deliveryRouteLookup.TryGetValue((timestampDay.Value, revenue), out var route))
+                {
+                    sourceCity = route.Source;
+                    targetCity = route.Target;
+                    if (string.IsNullOrWhiteSpace(cargo))
+                        cargo = route.Cargo;
+                }
+            }
 
             if (revenue == 0 &&
                 string.IsNullOrWhiteSpace(cargo) &&
@@ -1087,8 +1126,40 @@ public static partial class StatisticsProjection
                 expenses,
                 revenue - expenses,
                 FirstIntValue(entry, "distance"),
-                FirstIntValue(entry, "timestamp_day"));
+                timestampDay);
         }
+    }
+
+    private static Dictionary<(int Day, long Revenue), (string? Source, string? Target, string? Cargo)> BuildDeliveryLogRouteLookup(
+        IReadOnlyList<SiiUnit> units,
+        IReadOnlyDictionary<string, SiiUnit> unitsById)
+    {
+        var lookup = new Dictionary<(int, long), (string?, string?, string?)>();
+        var economy = units.FirstOrDefault(u => u.TypeEquals("economy"));
+        var deliveryLogId = FirstKnownValue(economy, "delivery_log");
+        if (deliveryLogId is null || !unitsById.TryGetValue(deliveryLogId, out var deliveryLog))
+            return lookup;
+
+        foreach (var entryId in deliveryLog.GetArray("entries").Values.Select(CleanSiiValue).Where(v => v is not null))
+        {
+            if (!unitsById.TryGetValue(entryId!, out var entry) || !entry.TypeEquals("delivery_log_entry"))
+                continue;
+
+            var parameters = entry.GetArray("params");
+            var endGameTime = ParseMoney(GetArrayValue(parameters, 0));
+            var revenue = ParseMoney(GetArrayValue(parameters, 5));
+            if (endGameTime <= 0 || revenue <= 0)
+                continue;
+
+            var day = (int)(endGameTime / 1440);
+            lookup.TryAdd(
+                (day, revenue),
+                (CityFromCompany(GetArrayValue(parameters, 1)),
+                 CityFromCompany(GetArrayValue(parameters, 2)),
+                 GetArrayValue(parameters, 3)));
+        }
+
+        return lookup;
     }
 
     private static string? GetArrayValue(IReadOnlyDictionary<string, string> values, int index) =>
