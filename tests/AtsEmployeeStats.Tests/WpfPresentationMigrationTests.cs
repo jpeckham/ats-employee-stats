@@ -414,6 +414,9 @@ public sealed class WpfPresentationMigrationTests
     private static string ReadAllSource(string root, string folder)
     {
         var path = Path.Combine(root, folder);
+        if (!Directory.Exists(path))
+            return string.Empty;
+
         return string.Join(
             Environment.NewLine,
             Directory.EnumerateFiles(path, "*.cs", SearchOption.AllDirectories).Select(File.ReadAllText));
