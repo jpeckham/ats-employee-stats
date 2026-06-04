@@ -16,6 +16,16 @@ public partial class MainWindow : Window
         Loaded += async (_, _) => await viewModel.LoadAsync();
     }
 
+    private void DetailTabControl_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (e.OriginalSource == sender &&
+            DataContext is MainWindowViewModel viewModel &&
+            sender is TabControl { SelectedItem: DetailTabViewModel tab })
+        {
+            viewModel.NotifyTabSelected(tab.Title);
+        }
+    }
+
     private void Explorer_SelectedItemChanged(object sender, RoutedPropertyChangedEventArgs<object> e)
     {
         if (DataContext is MainWindowViewModel viewModel &&

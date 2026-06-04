@@ -17,6 +17,8 @@ public sealed partial class MainWindowViewModel(
 {
     private DashboardQueryRequest _query = new();
     private DashboardStatisticsDto? _dashboard;
+    private ExplorerNodeViewModel? _selectedNode;
+    private string? _activeTabTitle;
 
     [ObservableProperty]
     private CompanyExplorerViewModel explorer = new();
@@ -223,13 +225,18 @@ public sealed partial class MainWindowViewModel(
         if (IsBusy)
             return;
 
+        var savedTabTitle = _activeTabTitle;
         try
         {
             IsBusy = true;
             StatusText = "Loading local statistics...";
             _dashboard = await Task.Run(() => dashboardUseCases.GetDashboardAsync(_query.ToOptions(), CancellationToken.None));
             BuildExplorer(_dashboard.Companies);
-            SelectedDetail = new CompaniesDetailViewModel(_dashboard.Companies);
+            if (_selectedNode is not null)
+                SelectExplorerNode(_selectedNode);
+            else
+                SelectedDetail = new CompaniesDetailViewModel(_dashboard.Companies);
+            RestoreTab(savedTabTitle);
             UpdateNavigationState();
             StatusText = $"Loaded {_dashboard.Companies.Count:N0} companies";
         }
@@ -249,6 +256,7 @@ public sealed partial class MainWindowViewModel(
         if (IsBusy)
             return;
 
+        var savedTabTitle = _activeTabTitle;
         try
         {
             IsBusy = true;
@@ -258,7 +266,11 @@ public sealed partial class MainWindowViewModel(
             var progress = new Progress<SaveLoadProgress>(ApplyLoadProgress);
             _dashboard = await Task.Run(() => reloadUseCase.ReloadAsync(_query.ToOptions(), CancellationToken.None, progress));
             BuildExplorer(_dashboard.Companies);
-            SelectedDetail = new CompaniesDetailViewModel(_dashboard.Companies);
+            if (_selectedNode is not null)
+                SelectExplorerNode(_selectedNode);
+            else
+                SelectedDetail = new CompaniesDetailViewModel(_dashboard.Companies);
+            RestoreTab(savedTabTitle);
             UpdateNavigationState();
             StatusText = $"Reloaded {_dashboard.Companies.Count:N0} companies";
         }
@@ -345,6 +357,8 @@ public sealed partial class MainWindowViewModel(
 
         if (node.Kind == ExplorerNodeKind.SaveLocationCompany)
             StatusText = $"Company selected: {company.DisplayName}";
+
+        _selectedNode = node;
     }
 
     private void BuildExplorer(IReadOnlyList<CompanyDto> companies)
@@ -618,6 +632,17 @@ public sealed partial class MainWindowViewModel(
     private bool CanReloadSavesCommand() => CanReloadSaves;
 
     private bool CanRefreshDashboardCommand() => CanRefreshDashboard;
+
+    internal void NotifyTabSelected(string? title) => _activeTabTitle = title;
+
+    private void RestoreTab(string? tabTitle)
+    {
+        if (tabTitle is null || SelectedDetail is null)
+            return;
+        var index = SelectedDetail.Tabs.ToList().FindIndex(t => Same(t.Title, tabTitle));
+        if (index > 0)
+            SelectedDetail.SelectedTabIndex = index;
+    }
 
     private void UpdateNavigationState()
     {

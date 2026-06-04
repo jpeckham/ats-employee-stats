@@ -181,7 +181,8 @@
 
                 <TabControl Grid.Row="2"
                             ItemsSource="{Binding SelectedDetail.Tabs}"
-                            SelectedIndex="{Binding SelectedDetail.SelectedTabIndex, Mode=OneWay}">
+                            SelectedIndex="{Binding SelectedDetail.SelectedTabIndex, Mode=OneWay}"
+                            SelectionChanged="DetailTabControl_SelectionChanged">
                     <TabControl.ItemTemplate>
                         <DataTemplate>
                             <TextBlock Text="{Binding Title}" />
