@@ -146,8 +146,8 @@ internal static class TableColumns
 
 internal static class RowFormatting
 {
-    public static string Money(long value) =>
-        string.Create(CultureInfo.CurrentCulture, $"{value:C0}");
+    public static string Money(long value, string currencySymbol = "$") =>
+        string.Create(CultureInfo.InvariantCulture, $"{currencySymbol}{value:N0}");
 
     public static string Count(int value) =>
         value.ToString("N0", CultureInfo.CurrentCulture);

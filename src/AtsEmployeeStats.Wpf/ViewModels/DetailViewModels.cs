@@ -62,7 +62,7 @@ public sealed class CompanyExplorerViewModel : ObservableObject
 public sealed class CompanyDetailViewModel : EntityDetailViewModel
 {
     public CompanyDetailViewModel(CompanyDto company, string? selectedTabTitle = null)
-        : base(company.DisplayName, company.OwnerName ?? company.Id, RowFormatting.Money(company.Profit))
+        : base(company.DisplayName, company.OwnerName ?? company.Id, RowFormatting.Money(company.Profit, company.CurrencySymbol))
     {
         Metrics.Add(new("Garages", RowFormatting.Count(company.Garages.Count)));
         Metrics.Add(new("Drivers", RowFormatting.Count(company.Drivers.Count)));
@@ -86,12 +86,12 @@ public sealed class CompanyDetailViewModel : EntityDetailViewModel
 public sealed class GarageDetailViewModel : EntityDetailViewModel
 {
     public GarageDetailViewModel(CompanyDto company, GarageDto garage)
-        : base(garage.DisplayName, $"{company.DisplayName} / Garages / {garage.Id}", RowFormatting.Money(garage.Profit))
+        : base(garage.DisplayName, $"{company.DisplayName} / Garages / {garage.Id}", RowFormatting.Money(garage.Profit, company.CurrencySymbol))
     {
         Metrics.Add(new("Drivers", RowFormatting.Count(garage.EmployeeCount)));
         Metrics.Add(new("Trucks", RowFormatting.Count(garage.TruckCount)));
         Metrics.Add(new("Trailers", RowFormatting.Count(garage.TrailerCount)));
-        Metrics.Add(new("Avg/day", RowFormatting.Money(garage.ProfitPerDay)));
+        Metrics.Add(new("Avg/day", RowFormatting.Money(garage.ProfitPerDay, company.CurrencySymbol)));
         Tabs.Add(new("Overview", GarageOverviewBuilder.Build(company, garage)));
         Tabs.Add(new("Drivers", company.Drivers.Where(x => Same(x.GarageId, garage.Id)).Select(driver => Rows.Driver(company, driver)), TableColumns.Drivers));
         Tabs.Add(new("Trucks", company.Trucks.Where(x => Same(x.GarageId, garage.Id)).Select(truck => Rows.Truck(company, truck)), TableColumns.Trucks));
@@ -102,11 +102,11 @@ public sealed class GarageDetailViewModel : EntityDetailViewModel
 public sealed class DriverDetailViewModel : EntityDetailViewModel
 {
     public DriverDetailViewModel(CompanyDto company, DriverDto driver)
-        : base(driver.DisplayName, $"{company.DisplayName} / Drivers / {driver.Id}", RowFormatting.Money(driver.Profit))
+        : base(driver.DisplayName, $"{company.DisplayName} / Drivers / {driver.Id}", RowFormatting.Money(driver.Profit, company.CurrencySymbol))
     {
         Metrics.Add(new("Jobs", RowFormatting.Count(driver.JobCount)));
-        Metrics.Add(new("Avg/day", RowFormatting.Money(driver.ProfitPerDay)));
-        Metrics.Add(new("Recent/day", RowFormatting.Money(driver.RecentProfitPerDay)));
+        Metrics.Add(new("Avg/day", RowFormatting.Money(driver.ProfitPerDay, company.CurrencySymbol)));
+        Metrics.Add(new("Recent/day", RowFormatting.Money(driver.RecentProfitPerDay, company.CurrencySymbol)));
         Metrics.Add(new("Garage", GarageName(company, driver.GarageId)));
         Tabs.Add(new("Overview", DriverOverviewBuilder.Build(company, driver)));
         Tabs.Add(new("Jobs", company.Missions.Where(x => Same(x.DriverId, driver.Id)).Select(job => Rows.Job(company, job)), TableColumns.Jobs));
@@ -118,9 +118,9 @@ public sealed class DriverDetailViewModel : EntityDetailViewModel
 public sealed class TruckDetailViewModel : EntityDetailViewModel
 {
     public TruckDetailViewModel(CompanyDto company, TruckDto truck)
-        : base(truck.DisplayName, $"{company.DisplayName} / Trucks / {truck.Id}", RowFormatting.Money(truck.Profit))
+        : base(truck.DisplayName, $"{company.DisplayName} / Trucks / {truck.Id}", RowFormatting.Money(truck.Profit, company.CurrencySymbol))
     {
-        Metrics.Add(new("Avg/day", RowFormatting.Money(truck.ProfitPerDay)));
+        Metrics.Add(new("Avg/day", RowFormatting.Money(truck.ProfitPerDay, company.CurrencySymbol)));
         Metrics.Add(new("Garage", GarageName(company, truck.GarageId)));
         Metrics.Add(new("Driver", DriverName(company, truck.DriverId)));
         Metrics.Add(new("Plate", truck.LicensePlate ?? "-"));
@@ -133,10 +133,10 @@ public sealed class TruckDetailViewModel : EntityDetailViewModel
 public sealed class TrailerDetailViewModel : EntityDetailViewModel
 {
     public TrailerDetailViewModel(CompanyDto company, TrailerDto trailer)
-        : base(trailer.LicensePlate ?? trailer.Id, $"{company.DisplayName} / Trailers / {trailer.TrailerType}", RowFormatting.Money(trailer.Profit))
+        : base(trailer.LicensePlate ?? trailer.Id, $"{company.DisplayName} / Trailers / {trailer.TrailerType}", RowFormatting.Money(trailer.Profit, company.CurrencySymbol))
     {
         Metrics.Add(new("Jobs", RowFormatting.Count(trailer.JobCount)));
-        Metrics.Add(new("Avg/day", RowFormatting.Money(trailer.ProfitPerDay)));
+        Metrics.Add(new("Avg/day", RowFormatting.Money(trailer.ProfitPerDay, company.CurrencySymbol)));
         Metrics.Add(new("Garage", GarageName(company, trailer.GarageId)));
         Metrics.Add(new("Type", trailer.TrailerType));
         Tabs.Add(new("Overview", TrailerOverviewBuilder.Build(company, trailer)));
@@ -148,7 +148,7 @@ public sealed class TrailerDetailViewModel : EntityDetailViewModel
 public sealed class JobDetailViewModel : EntityDetailViewModel
 {
     public JobDetailViewModel(CompanyDto company, MissionDto job)
-        : base(string.IsNullOrWhiteSpace(job.Cargo) ? job.Id : job.Cargo!, $"{RowFormatting.Value(job.SourceCity)} to {RowFormatting.Value(job.TargetCity)}", RowFormatting.Money(job.Profit))
+        : base(string.IsNullOrWhiteSpace(job.Cargo) ? job.Id : job.Cargo!, $"{RowFormatting.Value(job.SourceCity)} to {RowFormatting.Value(job.TargetCity)}", RowFormatting.Money(job.Profit, company.CurrencySymbol))
     {
         Metrics.Add(new("Day", job.TimestampDay?.ToString() ?? "-"));
         Metrics.Add(new("Driver", DriverName(company, job.DriverId)));
@@ -162,15 +162,15 @@ public sealed class JobDetailViewModel : EntityDetailViewModel
 public sealed class CityDetailViewModel : EntityDetailViewModel
 {
     public CityDetailViewModel(CompanyDto company, CityDto city)
-        : base(city.DisplayName, $"{company.DisplayName} / Cities / {city.Id}", RowFormatting.Money(city.BidirectionalProfit))
+        : base(city.DisplayName, $"{company.DisplayName} / Cities / {city.Id}", RowFormatting.Money(city.BidirectionalProfit, company.CurrencySymbol))
     {
         Metrics.Add(new("Visits", RowFormatting.Count(city.VisitCount)));
-        Metrics.Add(new("Outbound", RowFormatting.Money(city.OutboundProfit)));
-        Metrics.Add(new("Inbound", RowFormatting.Money(city.InboundProfit)));
+        Metrics.Add(new("Outbound", RowFormatting.Money(city.OutboundProfit, company.CurrencySymbol)));
+        Metrics.Add(new("Inbound", RowFormatting.Money(city.InboundProfit, company.CurrencySymbol)));
         Metrics.Add(new("Expansion", city.ExpansionScore.ToString("0.##")));
         Tabs.Add(new("Overview", CityOverviewBuilder.Build(company, city)));
         Tabs.Add(new("Jobs", company.Missions.Where(job => Same(job.SourceCity, city.Id) || Same(job.TargetCity, city.Id)).Select(job => Rows.Job(company, job)), TableColumns.Jobs));
-        Tabs.Add(new("Routes", (company.Routes ?? []).Where(route => Same(route.OriginCityId, city.Id) || Same(route.DestinationCityId, city.Id)).Select(route => new GridRowViewModel($"{route.OriginCityId} to {route.DestinationCityId}", RowFormatting.Money(route.Profit), $"{route.JobCount:N0} jobs", $"{route.ProfitPerMile:0.00}/mi", [])
+        Tabs.Add(new("Routes", (company.Routes ?? []).Where(route => Same(route.OriginCityId, city.Id) || Same(route.DestinationCityId, city.Id)).Select(route => new GridRowViewModel($"{route.OriginCityId} to {route.DestinationCityId}", RowFormatting.Money(route.Profit, company.CurrencySymbol), $"{route.JobCount:N0} jobs", $"{route.ProfitPerMile:0.00}/mi", [])
         {
             ProfitSort = route.Profit
         }), TableColumns.Routes));
@@ -180,42 +180,42 @@ public sealed class CityDetailViewModel : EntityDetailViewModel
 internal static class Rows
 {
     public static GridRowViewModel Garage(CompanyDto company, GarageDto garage) =>
-        new(garage.DisplayName, RowFormatting.Money(garage.Profit), $"{garage.EmployeeCount:N0} drivers / {garage.TruckCount:N0} trucks", $"{RowFormatting.Money(garage.ProfitPerDay)}/day", RowFormatting.Trend(garage.Trend), garage)
+        new(garage.DisplayName, RowFormatting.Money(garage.Profit, company.CurrencySymbol), $"{garage.EmployeeCount:N0} drivers / {garage.TruckCount:N0} trucks", $"{RowFormatting.Money(garage.ProfitPerDay, company.CurrencySymbol)}/day", RowFormatting.Trend(garage.Trend), garage)
         {
             Target = new(ExplorerNodeKind.Garage, company.Id, garage.Id),
             ProfitSort = garage.Profit
         };
 
     public static GridRowViewModel Driver(CompanyDto company, DriverDto driver) =>
-        new(driver.DisplayName, RowFormatting.Money(driver.Profit), $"{GarageName(company, driver.GarageId)} / {TruckName(company, driver.TruckId)}", $"{driver.JobCount:N0} jobs", RowFormatting.Trend(driver.Trend), driver)
+        new(driver.DisplayName, RowFormatting.Money(driver.Profit, company.CurrencySymbol), $"{GarageName(company, driver.GarageId)} / {TruckName(company, driver.TruckId)}", $"{driver.JobCount:N0} jobs", RowFormatting.Trend(driver.Trend), driver)
         {
             Target = new(ExplorerNodeKind.Driver, company.Id, driver.Id),
             ProfitSort = driver.Profit
         };
 
     public static GridRowViewModel Truck(CompanyDto company, TruckDto truck) =>
-        new(truck.DisplayName, RowFormatting.Money(truck.Profit), $"{GarageName(company, truck.GarageId)} / {DriverName(company, truck.DriverId)}", truck.LicensePlate ?? truck.Id, RowFormatting.Trend(truck.Trend), truck)
+        new(truck.DisplayName, RowFormatting.Money(truck.Profit, company.CurrencySymbol), $"{GarageName(company, truck.GarageId)} / {DriverName(company, truck.DriverId)}", truck.LicensePlate ?? truck.Id, RowFormatting.Trend(truck.Trend), truck)
         {
             Target = new(ExplorerNodeKind.Truck, company.Id, truck.Id),
             ProfitSort = truck.Profit
         };
 
     public static GridRowViewModel Trailer(CompanyDto company, TrailerDto trailer) =>
-        new(trailer.LicensePlate ?? trailer.Id, RowFormatting.Money(trailer.Profit), $"{trailer.TrailerType} / {GarageName(company, trailer.GarageId)}", $"{trailer.JobCount:N0} jobs", RowFormatting.Trend(trailer.Trend), trailer)
+        new(trailer.LicensePlate ?? trailer.Id, RowFormatting.Money(trailer.Profit, company.CurrencySymbol), $"{trailer.TrailerType} / {GarageName(company, trailer.GarageId)}", $"{trailer.JobCount:N0} jobs", RowFormatting.Trend(trailer.Trend), trailer)
         {
             Target = new(ExplorerNodeKind.Trailer, company.Id, trailer.LicensePlate ?? trailer.Id),
             ProfitSort = trailer.Profit
         };
 
     public static GridRowViewModel Job(CompanyDto company, MissionDto job) =>
-        new(string.IsNullOrWhiteSpace(job.Cargo) ? job.Id : job.Cargo!, RowFormatting.Money(job.Profit), $"{RowFormatting.Value(job.SourceCity)} to {RowFormatting.Value(job.TargetCity)}", job.TimestampDay?.ToString() ?? "-", [], job)
+        new(string.IsNullOrWhiteSpace(job.Cargo) ? job.Id : job.Cargo!, RowFormatting.Money(job.Profit, company.CurrencySymbol), $"{RowFormatting.Value(job.SourceCity)} to {RowFormatting.Value(job.TargetCity)}", job.TimestampDay?.ToString() ?? "-", [], job)
         {
             Target = new(ExplorerNodeKind.Job, company.Id, job.Id),
             ProfitSort = job.Profit
         };
 
     public static GridRowViewModel City(CompanyDto company, CityDto city) =>
-        new(city.DisplayName, RowFormatting.Money(city.BidirectionalProfit), city.HasOwnedGarage ? "Owned garage" : "No owned garage", $"Expansion {city.ExpansionScore:0.##}", [], city)
+        new(city.DisplayName, RowFormatting.Money(city.BidirectionalProfit, company.CurrencySymbol), city.HasOwnedGarage ? "Owned garage" : "No owned garage", $"Expansion {city.ExpansionScore:0.##}", [], city)
         {
             Target = new(ExplorerNodeKind.City, company.Id, city.Id),
             ProfitSort = city.BidirectionalProfit,
@@ -223,11 +223,11 @@ internal static class Rows
             Eligible = city.IsGarageEligible ? "Yes" : "No",
             Visits = RowFormatting.Count(city.VisitCount),
             VisitsSort = city.VisitCount,
-            Outbound = RowFormatting.Money(city.OutboundProfit),
+            Outbound = RowFormatting.Money(city.OutboundProfit, company.CurrencySymbol),
             OutboundSort = city.OutboundProfit,
-            Inbound = RowFormatting.Money(city.InboundProfit),
+            Inbound = RowFormatting.Money(city.InboundProfit, company.CurrencySymbol),
             InboundSort = city.InboundProfit,
-            Total = RowFormatting.Money(city.OutboundProfit + city.InboundProfit),
+            Total = RowFormatting.Money(city.OutboundProfit + city.InboundProfit, company.CurrencySymbol),
             TotalSort = city.OutboundProfit + city.InboundProfit,
             Expansion = city.ExpansionScore.ToString("0.##"),
             ExpansionSort = city.ExpansionScore

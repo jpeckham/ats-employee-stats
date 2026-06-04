@@ -858,15 +858,15 @@ public sealed class GameSaveRowViewModel
 public sealed class CompaniesDetailViewModel : EntityDetailViewModel
 {
     public CompaniesDetailViewModel(IReadOnlyList<CompanyDto> companies)
-        : base("Companies", "All trucking companies", RowFormatting.Money(companies.Sum(company => company.Profit)))
+        : base("Companies", "All trucking companies", RowFormatting.Money(companies.Sum(company => company.Profit), companies.FirstOrDefault()?.CurrencySymbol ?? "$"))
     {
         Metrics.Add(new("Companies", RowFormatting.Count(companies.Count)));
-        Metrics.Add(new("Profit", RowFormatting.Money(companies.Sum(company => company.Profit))));
+        Metrics.Add(new("Profit", RowFormatting.Money(companies.Sum(company => company.Profit), companies.FirstOrDefault()?.CurrencySymbol ?? "$")));
         Metrics.Add(new("Drivers", RowFormatting.Count(companies.Sum(company => company.Drivers.Count))));
         Metrics.Add(new("Trucks", RowFormatting.Count(companies.Sum(company => company.Trucks.Count))));
         Tabs.Add(new("Companies", companies.Select(company => new GridRowViewModel(
             company.DisplayName,
-            RowFormatting.Money(company.Profit),
+            RowFormatting.Money(company.Profit, company.CurrencySymbol),
             $"{company.Garages.Count:N0} garages / {company.Drivers.Count:N0} drivers / {company.Trucks.Count:N0} trucks",
             $"{company.Missions.Count:N0} jobs",
             RowFormatting.Trend(company.ProfitTrend),

@@ -21,7 +21,8 @@ public sealed record CompanyDto(
     SparklineDto? ProfitTrend = null,
     IReadOnlyList<DriverTruckAssignmentDto>? DriverTruckAssignments = null,
     IReadOnlyList<DriverGarageAssignmentDto>? DriverGarageAssignments = null,
-    string? OwnerName = null);
+    string? OwnerName = null,
+    string CurrencySymbol = "$");
 
 public sealed record GarageDto(
     string Id,

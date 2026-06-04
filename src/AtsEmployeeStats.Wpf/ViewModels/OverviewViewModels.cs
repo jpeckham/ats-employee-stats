@@ -74,10 +74,10 @@ internal static class CompanyOverviewBuilder
 {
     public static OverviewViewModel Build(CompanyDto company)
     {
-        var overview = Create(company.DisplayName, company.OwnerName ?? company.Id, RowFormatting.Money(company.Profit));
+        var overview = Create(company.DisplayName, company.OwnerName ?? company.Id, RowFormatting.Money(company.Profit, company.CurrencySymbol));
         AddCards(
             overview,
-            ("Profit", RowFormatting.Money(company.Profit), "Company total"),
+            ("Profit", RowFormatting.Money(company.Profit, company.CurrencySymbol), "Company total"),
             ("Drivers", RowFormatting.Count(company.Drivers.Count), "Employees"),
             ("Trucks", RowFormatting.Count(company.Trucks.Count), "Fleet"),
             ("Trailers", RowFormatting.Count(company.Trailers?.Count ?? 0), "Owned"),
@@ -105,10 +105,10 @@ internal static class GarageOverviewBuilder
         if (jobs.Length == 0)
             jobs = company.Missions.Where(job => company.Drivers.Any(driver => Same(driver.Id, job.DriverId) && Same(driver.GarageId, garage.Id))).ToArray();
 
-        var overview = Create(garage.DisplayName, $"{company.DisplayName} / Garage", RowFormatting.Money(garage.Profit));
+        var overview = Create(garage.DisplayName, $"{company.DisplayName} / Garage", RowFormatting.Money(garage.Profit, company.CurrencySymbol));
         AddCards(
             overview,
-            ("Profit", RowFormatting.Money(garage.Profit), "Garage total"),
+            ("Profit", RowFormatting.Money(garage.Profit, company.CurrencySymbol), "Garage total"),
             ("Drivers", RowFormatting.Count(garage.EmployeeCount), "Assigned"),
             ("Trucks", RowFormatting.Count(garage.TruckCount), "Assigned"),
             ("Trailers", RowFormatting.Count(garage.TrailerCount), "Assigned"),
@@ -128,12 +128,12 @@ internal static class DriverOverviewBuilder
     public static OverviewViewModel Build(CompanyDto company, DriverDto driver)
     {
         var jobs = company.Missions.Where(job => Same(job.DriverId, driver.Id)).ToArray();
-        var overview = Create(driver.DisplayName, $"{company.DisplayName} / Driver", RowFormatting.Money(driver.Profit));
+        var overview = Create(driver.DisplayName, $"{company.DisplayName} / Driver", RowFormatting.Money(driver.Profit, company.CurrencySymbol));
         AddCards(
             overview,
-            ("Profit", RowFormatting.Money(driver.Profit), "Driver total"),
+            ("Profit", RowFormatting.Money(driver.Profit, company.CurrencySymbol), "Driver total"),
             ("Jobs", RowFormatting.Count(driver.JobCount), "Completed"),
-            ("Average Profit Per Job", RowFormatting.Money(driver.JobCount == 0 ? 0 : driver.Profit / driver.JobCount), "Completed jobs"),
+            ("Average Profit Per Job", RowFormatting.Money(driver.JobCount == 0 ? 0 : driver.Profit / driver.JobCount, company.CurrencySymbol), "Completed jobs"),
             ("Current Garage", GarageName(company, driver.GarageId), "Assignment"),
             ("Current Truck", TruckName(company, driver.TruckId), "Assignment"));
         AddChart(overview, "Profit Trend", TrendOrDailyProfit(driver.Trend, jobs));
@@ -151,10 +151,10 @@ internal static class TruckOverviewBuilder
     public static OverviewViewModel Build(CompanyDto company, TruckDto truck)
     {
         var jobs = company.Missions.Where(job => Same(job.TruckId, truck.Id)).ToArray();
-        var overview = Create(truck.DisplayName, $"{company.DisplayName} / Truck", RowFormatting.Money(truck.Profit));
+        var overview = Create(truck.DisplayName, $"{company.DisplayName} / Truck", RowFormatting.Money(truck.Profit, company.CurrencySymbol));
         AddCards(
             overview,
-            ("Profit", RowFormatting.Money(truck.Profit), "Truck total"),
+            ("Profit", RowFormatting.Money(truck.Profit, company.CurrencySymbol), "Truck total"),
             ("Jobs", RowFormatting.Count(jobs.Length), "Completed"),
             ("Driver Count", RowFormatting.Count(jobs.Select(x => x.DriverId).Where(x => !string.IsNullOrWhiteSpace(x)).Distinct(StringComparer.OrdinalIgnoreCase).Count()), "Observed"),
             ("Garage Count", RowFormatting.Count(new[] { truck.GarageId }.Where(x => !string.IsNullOrWhiteSpace(x)).Distinct(StringComparer.OrdinalIgnoreCase).Count()), "Assignments"));
@@ -173,10 +173,10 @@ internal static class TrailerOverviewBuilder
     public static OverviewViewModel Build(CompanyDto company, TrailerDto trailer)
     {
         var jobs = company.Missions.Where(job => Same(job.TrailerLicensePlate, trailer.LicensePlate) || Same(job.TrailerId, trailer.Id)).ToArray();
-        var overview = Create(trailer.LicensePlate ?? trailer.Id, $"{company.DisplayName} / Trailer / {trailer.TrailerType}", RowFormatting.Money(trailer.Profit));
+        var overview = Create(trailer.LicensePlate ?? trailer.Id, $"{company.DisplayName} / Trailer / {trailer.TrailerType}", RowFormatting.Money(trailer.Profit, company.CurrencySymbol));
         AddCards(
             overview,
-            ("Profit", RowFormatting.Money(trailer.Profit), "Trailer total"),
+            ("Profit", RowFormatting.Money(trailer.Profit, company.CurrencySymbol), "Trailer total"),
             ("Jobs", RowFormatting.Count(trailer.JobCount), "Completed"),
             ("Driver Count", RowFormatting.Count(jobs.Select(x => x.DriverId).Where(x => !string.IsNullOrWhiteSpace(x)).Distinct(StringComparer.OrdinalIgnoreCase).Count()), "Observed"));
         AddChart(overview, "Profit Trend", TrendOrDailyProfit(trailer.Trend, jobs));
@@ -193,13 +193,13 @@ internal static class CityOverviewBuilder
     public static OverviewViewModel Build(CompanyDto company, CityDto city)
     {
         var jobs = company.Missions.Where(job => Same(job.SourceCity, city.Id) || Same(job.TargetCity, city.Id)).ToArray();
-        var overview = Create(city.DisplayName, $"{company.DisplayName} / City", RowFormatting.Money(city.BidirectionalProfit));
+        var overview = Create(city.DisplayName, $"{company.DisplayName} / City", RowFormatting.Money(city.BidirectionalProfit, company.CurrencySymbol));
         AddCards(
             overview,
             ("Visits", RowFormatting.Count(city.VisitCount), "Inbound and outbound"),
-            ("Outbound Revenue", RowFormatting.Money(city.OutboundProfit), "Origin city"),
-            ("Inbound Revenue", RowFormatting.Money(city.InboundProfit), "Destination city"),
-            ("Total Revenue", RowFormatting.Money(city.OutboundProfit + city.InboundProfit), "Combined"),
+            ("Outbound Revenue", RowFormatting.Money(city.OutboundProfit, company.CurrencySymbol), "Origin city"),
+            ("Inbound Revenue", RowFormatting.Money(city.InboundProfit, company.CurrencySymbol), "Destination city"),
+            ("Total Revenue", RowFormatting.Money(city.OutboundProfit + city.InboundProfit, company.CurrencySymbol), "Combined"),
             ("Expansion Score", city.ExpansionScore.ToString("0.##"), city.IsGarageEligible ? "Eligible" : "Not eligible"));
         AddChart(overview, "Revenue Trend", ProfitByDay(jobs));
         AddChart(overview, "Visit Trend", CountByDay(jobs));
@@ -215,10 +215,10 @@ internal static class JobOverviewBuilder
 {
     public static OverviewViewModel Build(CompanyDto company, MissionDto job)
     {
-        var overview = Create(string.IsNullOrWhiteSpace(job.Cargo) ? job.Id : job.Cargo!, $"{RowFormatting.Value(job.SourceCity)} to {RowFormatting.Value(job.TargetCity)}", RowFormatting.Money(job.Profit));
+        var overview = Create(string.IsNullOrWhiteSpace(job.Cargo) ? job.Id : job.Cargo!, $"{RowFormatting.Value(job.SourceCity)} to {RowFormatting.Value(job.TargetCity)}", RowFormatting.Money(job.Profit, company.CurrencySymbol));
         AddCards(
             overview,
-            ("Profit", RowFormatting.Money(job.Profit), "Job result"),
+            ("Profit", RowFormatting.Money(job.Profit, company.CurrencySymbol), "Job result"),
             ("Distance", "-", "Not captured"),
             ("Cargo", RowFormatting.Value(job.Cargo), "Freight"),
             ("Origin", RowFormatting.Value(job.SourceCity), "Source"),
@@ -336,7 +336,7 @@ internal static class OverviewBuilderHelpers
                 var relatedCity = company.Cities?.FirstOrDefault(city => Same(city.Id, relatedCityId));
                 return new GridRowViewModel(
                     relatedCity?.DisplayName ?? relatedCityId,
-                    RowFormatting.Money(route.Profit),
+                    RowFormatting.Money(route.Profit, company.CurrencySymbol),
                     $"{route.JobCount:N0} jobs",
                     $"{route.ProfitPerMile:0.00}/mi",
                     [])

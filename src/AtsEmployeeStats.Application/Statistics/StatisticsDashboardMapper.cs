@@ -263,7 +263,8 @@ public static class StatisticsDashboardMapper
                 a.DriverId, a.TruckId, a.EffectiveFromSaveName, a.EffectiveToSaveName, a.IsCurrent)).ToList(),
             company.DriverGarageAssignments.Select(a => new DriverGarageAssignmentDto(
                 a.DriverId, a.GarageId, a.EffectiveFromSaveName, a.EffectiveToSaveName, a.IsCurrent)).ToList(),
-            OwnerName: ownerName);
+            OwnerName: ownerName,
+            CurrencySymbol: company.Id.StartsWith("ets2-", StringComparison.OrdinalIgnoreCase) ? "€" : "$");
     }
 
     private static IReadOnlyList<T> SortedList<T>(
