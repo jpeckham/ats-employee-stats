@@ -72,11 +72,11 @@ public sealed class CompanyDetailViewModel : EntityDetailViewModel
         Metrics.Add(new("Cities", RowFormatting.Count(company.Cities?.Count ?? 0)));
 
         Tabs.Add(new("Overview", CompanyOverviewBuilder.Build(company)));
-        Tabs.Add(new("Garages", company.Garages.Select(garage => Rows.Garage(company, garage))));
-        Tabs.Add(new("Drivers", company.Drivers.Select(driver => Rows.Driver(company, driver))));
-        Tabs.Add(new("Trucks", company.Trucks.Select(truck => Rows.Truck(company, truck))));
-        Tabs.Add(new("Trailers", (company.Trailers ?? []).Select(trailer => Rows.Trailer(company, trailer))));
-        Tabs.Add(new("Jobs", company.Missions.Select(job => Rows.Job(company, job))));
+        Tabs.Add(new("Garages", company.Garages.Select(garage => Rows.Garage(company, garage)), TableColumns.Garages));
+        Tabs.Add(new("Drivers", company.Drivers.Select(driver => Rows.Driver(company, driver)), TableColumns.Drivers));
+        Tabs.Add(new("Trucks", company.Trucks.Select(truck => Rows.Truck(company, truck)), TableColumns.Trucks));
+        Tabs.Add(new("Trailers", (company.Trailers ?? []).Select(trailer => Rows.Trailer(company, trailer)), TableColumns.Trailers));
+        Tabs.Add(new("Jobs", company.Missions.Select(job => Rows.Job(company, job)), TableColumns.Jobs));
         Tabs.Add(new("Cities", (company.Cities ?? []).Select(city => Rows.City(company, city)), TableColumns.Cities));
         SelectedTabIndex = Math.Max(0, Tabs.ToList().FindIndex(tab => Same(tab.Title, selectedTabTitle)));
     }
@@ -93,9 +93,9 @@ public sealed class GarageDetailViewModel : EntityDetailViewModel
         Metrics.Add(new("Trailers", RowFormatting.Count(garage.TrailerCount)));
         Metrics.Add(new("Avg/day", RowFormatting.Money(garage.ProfitPerDay)));
         Tabs.Add(new("Overview", GarageOverviewBuilder.Build(company, garage)));
-        Tabs.Add(new("Drivers", company.Drivers.Where(x => Same(x.GarageId, garage.Id)).Select(driver => Rows.Driver(company, driver))));
-        Tabs.Add(new("Trucks", company.Trucks.Where(x => Same(x.GarageId, garage.Id)).Select(truck => Rows.Truck(company, truck))));
-        Tabs.Add(new("Trailers", (company.Trailers ?? []).Where(x => Same(x.GarageId, garage.Id)).Select(trailer => Rows.Trailer(company, trailer))));
+        Tabs.Add(new("Drivers", company.Drivers.Where(x => Same(x.GarageId, garage.Id)).Select(driver => Rows.Driver(company, driver)), TableColumns.Drivers));
+        Tabs.Add(new("Trucks", company.Trucks.Where(x => Same(x.GarageId, garage.Id)).Select(truck => Rows.Truck(company, truck)), TableColumns.Trucks));
+        Tabs.Add(new("Trailers", (company.Trailers ?? []).Where(x => Same(x.GarageId, garage.Id)).Select(trailer => Rows.Trailer(company, trailer)), TableColumns.Trailers));
     }
 }
 
@@ -109,9 +109,9 @@ public sealed class DriverDetailViewModel : EntityDetailViewModel
         Metrics.Add(new("Recent/day", RowFormatting.Money(driver.RecentProfitPerDay)));
         Metrics.Add(new("Garage", GarageName(company, driver.GarageId)));
         Tabs.Add(new("Overview", DriverOverviewBuilder.Build(company, driver)));
-        Tabs.Add(new("Jobs", company.Missions.Where(x => Same(x.DriverId, driver.Id)).Select(job => Rows.Job(company, job))));
-        Tabs.Add(new("Trucks", company.Trucks.Where(x => Same(x.DriverId, driver.Id) || Same(x.Id, driver.TruckId)).Select(truck => Rows.Truck(company, truck))));
-        Tabs.Add(new("Garages", (company.DriverGarageAssignments ?? []).Where(x => Same(x.DriverId, driver.Id)).Select(x => new GridRowViewModel(GarageName(company, x.GarageId), x.IsCurrent ? "Current" : "Past", x.EffectiveFromSaveName, x.EffectiveToSaveName ?? "-", []))));
+        Tabs.Add(new("Jobs", company.Missions.Where(x => Same(x.DriverId, driver.Id)).Select(job => Rows.Job(company, job)), TableColumns.Jobs));
+        Tabs.Add(new("Trucks", company.Trucks.Where(x => Same(x.DriverId, driver.Id) || Same(x.Id, driver.TruckId)).Select(truck => Rows.Truck(company, truck)), TableColumns.Trucks));
+        Tabs.Add(new("Garages", (company.DriverGarageAssignments ?? []).Where(x => Same(x.DriverId, driver.Id)).Select(x => new GridRowViewModel(GarageName(company, x.GarageId), x.IsCurrent ? "Current" : "Past", x.EffectiveFromSaveName, x.EffectiveToSaveName ?? "-", [])), TableColumns.GarageAssignments));
     }
 }
 
@@ -125,8 +125,8 @@ public sealed class TruckDetailViewModel : EntityDetailViewModel
         Metrics.Add(new("Driver", DriverName(company, truck.DriverId)));
         Metrics.Add(new("Plate", truck.LicensePlate ?? "-"));
         Tabs.Add(new("Overview", TruckOverviewBuilder.Build(company, truck)));
-        Tabs.Add(new("Jobs", company.Missions.Where(x => Same(x.TruckId, truck.Id)).Select(job => Rows.Job(company, job))));
-        Tabs.Add(new("Trailers", (company.Trailers ?? []).Where(trailer => company.Missions.Any(job => Same(job.TruckId, truck.Id) && (Same(job.TrailerLicensePlate, trailer.LicensePlate) || Same(job.TrailerId, trailer.Id)))).Select(trailer => Rows.Trailer(company, trailer))));
+        Tabs.Add(new("Jobs", company.Missions.Where(x => Same(x.TruckId, truck.Id)).Select(job => Rows.Job(company, job)), TableColumns.Jobs));
+        Tabs.Add(new("Trailers", (company.Trailers ?? []).Where(trailer => company.Missions.Any(job => Same(job.TruckId, truck.Id) && (Same(job.TrailerLicensePlate, trailer.LicensePlate) || Same(job.TrailerId, trailer.Id)))).Select(trailer => Rows.Trailer(company, trailer)), TableColumns.Trailers));
     }
 }
 
@@ -140,8 +140,8 @@ public sealed class TrailerDetailViewModel : EntityDetailViewModel
         Metrics.Add(new("Garage", GarageName(company, trailer.GarageId)));
         Metrics.Add(new("Type", trailer.TrailerType));
         Tabs.Add(new("Overview", TrailerOverviewBuilder.Build(company, trailer)));
-        Tabs.Add(new("Jobs", company.Missions.Where(job => Same(job.TrailerLicensePlate, trailer.LicensePlate) || Same(job.TrailerId, trailer.Id)).Select(job => Rows.Job(company, job))));
-        Tabs.Add(new("Trucks", company.Missions.Where(job => Same(job.TrailerLicensePlate, trailer.LicensePlate) || Same(job.TrailerId, trailer.Id)).Where(job => !string.IsNullOrWhiteSpace(job.TruckId)).Select(job => job.TruckId!).Distinct(StringComparer.OrdinalIgnoreCase).Select(id => company.Trucks.FirstOrDefault(truck => Same(truck.Id, id))).Where(truck => truck is not null).Select(truck => Rows.Truck(company, truck!))));
+        Tabs.Add(new("Jobs", company.Missions.Where(job => Same(job.TrailerLicensePlate, trailer.LicensePlate) || Same(job.TrailerId, trailer.Id)).Select(job => Rows.Job(company, job)), TableColumns.Jobs));
+        Tabs.Add(new("Trucks", company.Missions.Where(job => Same(job.TrailerLicensePlate, trailer.LicensePlate) || Same(job.TrailerId, trailer.Id)).Where(job => !string.IsNullOrWhiteSpace(job.TruckId)).Select(job => job.TruckId!).Distinct(StringComparer.OrdinalIgnoreCase).Select(id => company.Trucks.FirstOrDefault(truck => Same(truck.Id, id))).Where(truck => truck is not null).Select(truck => Rows.Truck(company, truck!)), TableColumns.Trucks));
     }
 }
 
@@ -155,7 +155,7 @@ public sealed class JobDetailViewModel : EntityDetailViewModel
         Metrics.Add(new("Truck", TruckName(company, job.TruckId)));
         Metrics.Add(new("Trailer", job.TrailerLicensePlate ?? job.TrailerId ?? job.TrailerType ?? "-"));
         Tabs.Add(new("Overview", JobOverviewBuilder.Build(company, job)));
-        Tabs.Add(new("Details", [Rows.Job(company, job)]));
+        Tabs.Add(new("Details", [Rows.Job(company, job)], TableColumns.Jobs));
     }
 }
 
@@ -169,11 +169,11 @@ public sealed class CityDetailViewModel : EntityDetailViewModel
         Metrics.Add(new("Inbound", RowFormatting.Money(city.InboundProfit)));
         Metrics.Add(new("Expansion", city.ExpansionScore.ToString("0.##")));
         Tabs.Add(new("Overview", CityOverviewBuilder.Build(company, city)));
-        Tabs.Add(new("Jobs", company.Missions.Where(job => Same(job.SourceCity, city.Id) || Same(job.TargetCity, city.Id)).Select(job => Rows.Job(company, job))));
+        Tabs.Add(new("Jobs", company.Missions.Where(job => Same(job.SourceCity, city.Id) || Same(job.TargetCity, city.Id)).Select(job => Rows.Job(company, job)), TableColumns.Jobs));
         Tabs.Add(new("Routes", (company.Routes ?? []).Where(route => Same(route.OriginCityId, city.Id) || Same(route.DestinationCityId, city.Id)).Select(route => new GridRowViewModel($"{route.OriginCityId} to {route.DestinationCityId}", RowFormatting.Money(route.Profit), $"{route.JobCount:N0} jobs", $"{route.ProfitPerMile:0.00}/mi", [])
         {
             ProfitSort = route.Profit
-        })));
+        }), TableColumns.Routes));
     }
 }
 

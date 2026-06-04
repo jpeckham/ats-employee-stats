@@ -57,8 +57,8 @@ internal static class TableColumns
     [
         new("Company", nameof(GridRowViewModel.Name), Width: 2),
         new("Profit", nameof(GridRowViewModel.Profit), nameof(GridRowViewModel.ProfitSort)),
-        new("Details", nameof(GridRowViewModel.Detail), Width: 2),
-        new("Jobs / Meta", nameof(GridRowViewModel.Secondary)),
+        new("Summary", nameof(GridRowViewModel.Detail), Width: 2),
+        new("Jobs", nameof(GridRowViewModel.Secondary)),
         new("Trend", nameof(GridRowViewModel.Trend), Width: 1.2, IsTrend: true)
     ];
 
@@ -69,6 +69,66 @@ internal static class TableColumns
         new("Details", nameof(GridRowViewModel.Detail), Width: 2),
         new("Jobs / Meta", nameof(GridRowViewModel.Secondary)),
         new("Trend", nameof(GridRowViewModel.Trend), Width: 1.2, IsTrend: true)
+    ];
+
+    public static readonly IReadOnlyList<TableColumnViewModel> Garages =
+    [
+        new("Name", nameof(GridRowViewModel.Name), Width: 2),
+        new("Profit", nameof(GridRowViewModel.Profit), nameof(GridRowViewModel.ProfitSort)),
+        new("Staff", nameof(GridRowViewModel.Detail), Width: 2),
+        new("Avg/Day", nameof(GridRowViewModel.Secondary)),
+        new("Trend", nameof(GridRowViewModel.Trend), Width: 1.2, IsTrend: true)
+    ];
+
+    public static readonly IReadOnlyList<TableColumnViewModel> Drivers =
+    [
+        new("Name", nameof(GridRowViewModel.Name), Width: 2),
+        new("Profit", nameof(GridRowViewModel.Profit), nameof(GridRowViewModel.ProfitSort)),
+        new("Assignment", nameof(GridRowViewModel.Detail), Width: 2),
+        new("Jobs", nameof(GridRowViewModel.Secondary)),
+        new("Trend", nameof(GridRowViewModel.Trend), Width: 1.2, IsTrend: true)
+    ];
+
+    public static readonly IReadOnlyList<TableColumnViewModel> Trucks =
+    [
+        new("Name", nameof(GridRowViewModel.Name), Width: 2),
+        new("Profit", nameof(GridRowViewModel.Profit), nameof(GridRowViewModel.ProfitSort)),
+        new("Assignment", nameof(GridRowViewModel.Detail), Width: 2),
+        new("Plate", nameof(GridRowViewModel.Secondary)),
+        new("Trend", nameof(GridRowViewModel.Trend), Width: 1.2, IsTrend: true)
+    ];
+
+    public static readonly IReadOnlyList<TableColumnViewModel> Trailers =
+    [
+        new("Name", nameof(GridRowViewModel.Name), Width: 2),
+        new("Profit", nameof(GridRowViewModel.Profit), nameof(GridRowViewModel.ProfitSort)),
+        new("Type / Location", nameof(GridRowViewModel.Detail), Width: 2),
+        new("Jobs", nameof(GridRowViewModel.Secondary)),
+        new("Trend", nameof(GridRowViewModel.Trend), Width: 1.2, IsTrend: true)
+    ];
+
+    public static readonly IReadOnlyList<TableColumnViewModel> Jobs =
+    [
+        new("Cargo", nameof(GridRowViewModel.Name), Width: 2),
+        new("Profit", nameof(GridRowViewModel.Profit), nameof(GridRowViewModel.ProfitSort)),
+        new("Route", nameof(GridRowViewModel.Detail), Width: 2),
+        new("Day", nameof(GridRowViewModel.Secondary))
+    ];
+
+    public static readonly IReadOnlyList<TableColumnViewModel> GarageAssignments =
+    [
+        new("Garage", nameof(GridRowViewModel.Name), Width: 2),
+        new("Status", nameof(GridRowViewModel.Profit)),
+        new("From", nameof(GridRowViewModel.Detail), Width: 2),
+        new("Until", nameof(GridRowViewModel.Secondary))
+    ];
+
+    public static readonly IReadOnlyList<TableColumnViewModel> Routes =
+    [
+        new("Route", nameof(GridRowViewModel.Name), Width: 2),
+        new("Profit", nameof(GridRowViewModel.Profit), nameof(GridRowViewModel.ProfitSort)),
+        new("Jobs", nameof(GridRowViewModel.Detail)),
+        new("$/Mile", nameof(GridRowViewModel.Secondary))
     ];
 
     public static readonly IReadOnlyList<TableColumnViewModel> Cities =
