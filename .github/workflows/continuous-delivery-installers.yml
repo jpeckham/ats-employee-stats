@@ -1,0 +1,25 @@
+name: Continuous Delivery Installers
+
+on:
+  push:
+    branches: ["main"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  continuous-delivery-installers:
+    uses: jpeckham/.github/.github/workflows/continuous-delivery-installers.yml@main
+    with:
+      main_branch: main
+      dotnet_versions: |
+        10.0.x
+      solution_path: AtsEmployeeStats.sln
+      test_target_path: AtsEmployeeStats.sln
+      publish_project_path: src/AtsEmployeeStats.Wpf/AtsEmployeeStats.Wpf.csproj
+      version_file: version.json
+      artifact_name_prefix: ats-employee-stats
+      runtimes: win-x64
+      coverage_badge_path: .github/badges/coverage.svg
+    secrets: inherit
