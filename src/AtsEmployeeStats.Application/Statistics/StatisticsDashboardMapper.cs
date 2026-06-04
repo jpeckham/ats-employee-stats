@@ -365,9 +365,13 @@ public static class StatisticsDashboardMapper
                 sourceById.TryGetValue(city, out var sourceCity);
                 var hasOwnedGarage = sourceCity?.HasOwnedGarage ?? false;
                 var isGarageEligible = sourceCity?.IsGarageEligible ?? false;
+                var expansionOutbound = outbound
+                    .Where(m => m.GarageId is null ||
+                                !StringComparer.OrdinalIgnoreCase.Equals(ExtractGarageCitySlug(m.GarageId), city))
+                    .ToList();
                 var expansionScore = (hasOwnedGarage || !isGarageEligible)
                     ? 0m
-                    : Math.Round(outbound.Count + inbound.Count + (outbound.Sum(mission => mission.Profit) / 10000m), 2, MidpointRounding.AwayFromZero);
+                    : Math.Round(expansionOutbound.Count + inbound.Count + (expansionOutbound.Sum(m => m.Profit) / 10000m), 2, MidpointRounding.AwayFromZero);
 
                 return new CityDto(
                     city,
@@ -383,6 +387,12 @@ public static class StatisticsDashboardMapper
             .OrderByDescending(city => city.HasOwnedGarage)
             .ThenBy(city => city.Id, StringComparer.OrdinalIgnoreCase)
             .ToList();
+    }
+
+    private static string? ExtractGarageCitySlug(string garageId)
+    {
+        var dot = garageId.IndexOf('.');
+        return dot >= 0 && dot + 1 < garageId.Length ? garageId[(dot + 1)..] : null;
     }
 
     private static bool HasRoute(MissionStatistic mission) =>

@@ -715,9 +715,13 @@ public static partial class StatisticsProjection
                     .Sum(route => route.Profit);
                 var hasOwnedGarage = ownedGarageCities.Contains(city);
                 var isGarageEligible = eligibleGarageCities.Contains(city);
+                var expansionOutbound = outbound
+                    .Where(m => m.GarageId is null ||
+                                !StringComparer.OrdinalIgnoreCase.Equals(ExtractGarageCitySlug(m.GarageId), city))
+                    .ToList();
                 var expansionScore = (hasOwnedGarage || !isGarageEligible)
                     ? 0m
-                    : Math.Round(outbound.Count + inbound.Count + (outbound.Sum(mission => mission.Profit) / 10000m), 2, MidpointRounding.AwayFromZero);
+                    : Math.Round(expansionOutbound.Count + inbound.Count + (expansionOutbound.Sum(m => m.Profit) / 10000m), 2, MidpointRounding.AwayFromZero);
 
                 return new CityStatistic(
                     city,
