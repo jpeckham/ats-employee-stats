@@ -695,6 +695,12 @@ public static partial class StatisticsProjection
             .Select(city => city!)
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
+        var playerMissions = missions
+            .Where(mission => StringComparer.OrdinalIgnoreCase.Equals(mission.DriverId, PlayerDriverId))
+            .ToList();
+        var businessMissions = missions
+            .Where(mission => !StringComparer.OrdinalIgnoreCase.Equals(mission.DriverId, PlayerDriverId))
+            .ToList();
 
         return missionCities
             .Select(city =>
@@ -715,13 +721,20 @@ public static partial class StatisticsProjection
                     .Sum(route => route.Profit);
                 var hasOwnedGarage = ownedGarageCities.Contains(city);
                 var isGarageEligible = eligibleGarageCities.Contains(city);
-                var expansionOutbound = outbound
+                var businessOutbound = businessMissions
+                    .Where(mission => StringComparer.OrdinalIgnoreCase.Equals(NormalizeCityId(mission.SourceCity), city))
+                    .ToList();
+                var businessInbound = businessMissions
+                    .Where(mission => StringComparer.OrdinalIgnoreCase.Equals(NormalizeCityId(mission.TargetCity), city))
+                    .ToList();
+                var expansionOutbound = businessOutbound
                     .Where(m => m.GarageId is null ||
                                 !StringComparer.OrdinalIgnoreCase.Equals(ExtractGarageCitySlug(m.GarageId), city))
                     .ToList();
                 var expansionScore = (hasOwnedGarage || !isGarageEligible)
                     ? 0m
-                    : Math.Round(expansionOutbound.Count + inbound.Count + (expansionOutbound.Sum(m => m.Profit) / 10000m), 2, MidpointRounding.AwayFromZero);
+                    : Math.Round(expansionOutbound.Count + businessInbound.Count + (expansionOutbound.Sum(m => m.Profit) / 10000m), 2, MidpointRounding.AwayFromZero);
+                var playerRouteSignal = BuildPlayerRouteSignal(city, playerMissions);
 
                 return new CityStatistic(
                     city,
@@ -732,11 +745,33 @@ public static partial class StatisticsProjection
                     outbound.Sum(mission => mission.Profit),
                     inbound.Sum(mission => mission.Profit),
                     bidirectionalProfit,
-                    expansionScore);
+                    expansionScore,
+                    playerRouteSignal.VisitCount,
+                    playerRouteSignal.BidirectionalProfit,
+                    playerRouteSignal.Score);
             })
             .OrderByDescending(city => city.HasOwnedGarage)
             .ThenBy(city => city.Id, StringComparer.OrdinalIgnoreCase)
             .ToList();
+    }
+
+    private static (int VisitCount, long BidirectionalProfit, decimal Score) BuildPlayerRouteSignal(
+        string city,
+        IReadOnlyCollection<MissionStatistic> playerMissions)
+    {
+        var playerCityMissions = playerMissions
+            .Where(HasRoute)
+            .Where(mission =>
+                StringComparer.OrdinalIgnoreCase.Equals(NormalizeCityId(mission.SourceCity), city) ||
+                StringComparer.OrdinalIgnoreCase.Equals(NormalizeCityId(mission.TargetCity), city))
+            .ToList();
+        var visitCount = playerCityMissions.Count;
+        var bidirectionalProfit = playerCityMissions.Sum(mission => mission.Profit);
+        var hasOutbound = playerCityMissions.Any(mission => StringComparer.OrdinalIgnoreCase.Equals(NormalizeCityId(mission.SourceCity), city));
+        var hasInbound = playerCityMissions.Any(mission => StringComparer.OrdinalIgnoreCase.Equals(NormalizeCityId(mission.TargetCity), city));
+        var bidirectionalBonus = hasOutbound && hasInbound ? 2m : 0m;
+        var score = Math.Round(visitCount + bidirectionalBonus + (bidirectionalProfit / 10000m), 2, MidpointRounding.AwayFromZero);
+        return (visitCount, bidirectionalProfit, score);
     }
 
     private static IReadOnlyList<TrendPointStatistic> BuildProfitTrends(

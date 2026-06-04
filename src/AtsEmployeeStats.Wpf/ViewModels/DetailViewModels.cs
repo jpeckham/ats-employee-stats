@@ -168,6 +168,7 @@ public sealed class CityDetailViewModel : EntityDetailViewModel
         Metrics.Add(new("Outbound", RowFormatting.Money(city.OutboundProfit, company.CurrencySymbol)));
         Metrics.Add(new("Inbound", RowFormatting.Money(city.InboundProfit, company.CurrencySymbol)));
         Metrics.Add(new("Expansion", city.ExpansionScore.ToString("0.##")));
+        Metrics.Add(new("Player Routes", city.PlayerRouteScore.ToString("0.##")));
         Tabs.Add(new("Overview", CityOverviewBuilder.Build(company, city)));
         Tabs.Add(new("Jobs", company.Missions.Where(job => Same(job.SourceCity, city.Id) || Same(job.TargetCity, city.Id)).Select(job => Rows.Job(company, job)), TableColumns.Jobs));
         Tabs.Add(new("Routes", (company.Routes ?? []).Where(route => Same(route.OriginCityId, city.Id) || Same(route.DestinationCityId, city.Id)).Select(route => new GridRowViewModel($"{route.OriginCityId} to {route.DestinationCityId}", RowFormatting.Money(route.Profit, company.CurrencySymbol), $"{route.JobCount:N0} jobs", $"{route.ProfitPerMile:0.00}/mi", [])
@@ -215,7 +216,7 @@ internal static class Rows
         };
 
     public static GridRowViewModel City(CompanyDto company, CityDto city) =>
-        new(city.DisplayName, RowFormatting.Money(city.BidirectionalProfit, company.CurrencySymbol), city.HasOwnedGarage ? "Owned garage" : "No owned garage", $"Expansion {city.ExpansionScore:0.##}", [], city)
+        new(city.DisplayName, RowFormatting.Money(city.BidirectionalProfit, company.CurrencySymbol), city.HasOwnedGarage ? "Owned garage" : "No owned garage", $"Expansion {city.ExpansionScore:0.##} / Player {city.PlayerRouteScore:0.##}", [], city)
         {
             Target = new(ExplorerNodeKind.City, company.Id, city.Id),
             ProfitSort = city.BidirectionalProfit,
@@ -230,7 +231,9 @@ internal static class Rows
             Total = RowFormatting.Money(city.OutboundProfit + city.InboundProfit, company.CurrencySymbol),
             TotalSort = city.OutboundProfit + city.InboundProfit,
             Expansion = city.ExpansionScore.ToString("0.##"),
-            ExpansionSort = city.ExpansionScore
+            ExpansionSort = city.ExpansionScore,
+            PlayerRoutes = city.PlayerRouteScore.ToString("0.##"),
+            PlayerRoutesSort = city.PlayerRouteScore
         };
 }
 

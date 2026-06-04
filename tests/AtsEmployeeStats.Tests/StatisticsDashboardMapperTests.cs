@@ -183,6 +183,57 @@ public sealed class StatisticsDashboardMapperTests
     }
 
     [Fact]
+    public void ToDashboardDto_keeps_player_route_score_separate_from_expansion_score()
+    {
+        var statistics = new AtsStatistics(
+            new DateTimeOffset(2026, 6, 2, 12, 0, 0, TimeSpan.Zero),
+            [
+                new CompanyStatistics(
+                    "desert-line",
+                    "Desert Line",
+                    new DateTimeOffset(2026, 6, 2, 12, 0, 0, TimeSpan.Zero),
+                    [
+                        new GarageStatistic("garage.phoenix", "Phoenix", 0, 1, 1)
+                    ],
+                    [
+                        new DriverStatistic("player", "James", 0, "garage.phoenix", "truck.player", IsPlayer: true),
+                        new DriverStatistic("driver.alice", "Alice", 0, "garage.phoenix", "truck.alice")
+                    ],
+                    [
+                        new TruckStatistic("truck.player", "Player Truck", 0, "garage.phoenix", "player"),
+                        new TruckStatistic("truck.alice", "Alice Truck", 0, "garage.phoenix", "driver.alice")
+                    ],
+                    [
+                        new MissionStatistic("job.player.1", "player", "truck.player", null, "flatbed", "machinery", "phoenix", "denver", 5000, 10, GarageId: "garage.phoenix"),
+                        new MissionStatistic("job.player.2", "player", "truck.player", null, "flatbed", "machinery", "denver", "phoenix", 4500, 11, GarageId: "garage.phoenix"),
+                        new MissionStatistic("job.alice", "driver.alice", "truck.alice", null, "reefer", "medicine", "phoenix", "tucson", 2000, 10, GarageId: "garage.phoenix")
+                    ],
+                    [],
+                    [],
+                    [],
+                    [
+                        new CityStatistic("phoenix", "Phoenix", true, true, 3, 11500, 4500, 16000, 0),
+                        new CityStatistic("denver", "Denver", false, true, 2, 4500, 5000, 9500, 0),
+                        new CityStatistic("tucson", "Tucson", false, true, 1, 0, 2000, 2000, 1)
+                    ],
+                    [],
+                    []),
+            ]);
+
+        var company = Assert.Single(StatisticsDashboardMapper.ToDashboardDto(statistics, fromDay: 10, toDay: 11).Companies);
+
+        var denver = Assert.Single(company.Cities!, city => city.Id == "denver");
+        Assert.Equal(0, denver.ExpansionScore);
+        Assert.Equal(2, denver.PlayerVisitCount);
+        Assert.Equal(9500, denver.PlayerBidirectionalProfit);
+        Assert.True(denver.PlayerRouteScore > 0);
+
+        var tucson = Assert.Single(company.Cities!, city => city.Id == "tucson");
+        Assert.Equal(1, tucson.ExpansionScore);
+        Assert.Equal(0, tucson.PlayerRouteScore);
+    }
+
+    [Fact]
     public void ToDashboardDto_shows_correct_player_owned_trailer_count_per_garage()
     {
         var statistics = new AtsStatistics(

@@ -32,6 +32,7 @@ public sealed class RecommendNextGarageCityUseCase(
             .Cities?
             .Where(city => city.IsGarageEligible && !city.HasOwnedGarage)
             .OrderByDescending(city => city.ExpansionScore)
+            .ThenByDescending(city => city.PlayerRouteScore)
             .ThenByDescending(city => city.BidirectionalProfit)
             .ThenBy(city => city.DisplayName, StringComparer.OrdinalIgnoreCase)
             .FirstOrDefault();
@@ -46,6 +47,11 @@ public sealed class RecommendNextGarageCityUseCase(
             candidate.ExpansionScore,
             candidate.BidirectionalProfit,
             candidate.VisitCount,
-            "Recommended because it is the eligible unowned city with the highest expansion score.");
+            candidate.PlayerRouteScore > 0
+                ? "Recommended because it is the eligible unowned city with the highest expansion score, with supporting player routes."
+                : "Recommended because it is the eligible unowned city with the highest expansion score.",
+            candidate.PlayerRouteScore,
+            candidate.PlayerVisitCount,
+            candidate.PlayerBidirectionalProfit);
     }
 }

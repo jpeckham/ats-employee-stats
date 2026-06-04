@@ -188,7 +188,7 @@ public static class StatisticsDashboardMapper
             mission.TrailerLicensePlate));
 
         var routeDtos = BuildRouteDtos(filteredMissions);
-        var cityDtos = BuildCityDtos(company.Cities, filteredMissions, routeDtos);
+        var cityDtos = BuildCityDtos(company.Cities, filteredMissions, routeDtos, playerDriverIds);
 
         return new(
             company.Id,
@@ -244,7 +244,8 @@ public static class StatisticsDashboardMapper
                 ("outbound", c => c.OutboundProfit),
                 ("inbound", c => c.InboundProfit),
                 ("total", c => c.BidirectionalProfit),
-                ("expansion", c => (IComparable?)c.ExpansionScore)),
+                ("expansion", c => (IComparable?)c.ExpansionScore),
+                ("playerRoutes", c => (IComparable?)c.PlayerRouteScore)),
             SortedList(routeDtos, sort?.RoutesSortBy, sort?.RoutesSortDir, "profit",
                 ("profit", r => r.Profit),
                 ("jobCount", r => (IComparable?)r.JobCount),
@@ -318,7 +319,8 @@ public static class StatisticsDashboardMapper
     private static IReadOnlyList<CityDto> BuildCityDtos(
         IReadOnlyCollection<CityStatistic> sourceCities,
         IReadOnlyCollection<MissionStatistic> missions,
-        IReadOnlyCollection<RouteDto> routes)
+        IReadOnlyCollection<RouteDto> routes,
+        IReadOnlySet<string> playerDriverIds)
     {
         if (!missions.Any(HasRoute))
         {
@@ -332,11 +334,20 @@ public static class StatisticsDashboardMapper
                     city.OutboundProfit,
                     city.InboundProfit,
                     city.BidirectionalProfit,
-                    city.ExpansionScore))
+                    city.ExpansionScore,
+                    city.PlayerVisitCount,
+                    city.PlayerBidirectionalProfit,
+                    city.PlayerRouteScore))
                 .ToList();
         }
 
         var sourceById = sourceCities.ToDictionary(city => city.Id, StringComparer.OrdinalIgnoreCase);
+        var playerMissions = missions
+            .Where(mission => !string.IsNullOrWhiteSpace(mission.DriverId) && playerDriverIds.Contains(mission.DriverId))
+            .ToList();
+        var businessMissions = missions
+            .Where(mission => string.IsNullOrWhiteSpace(mission.DriverId) || !playerDriverIds.Contains(mission.DriverId))
+            .ToList();
         var missionCities = missions
             .Where(HasRoute)
             .SelectMany(mission => new[] { mission.SourceCity!, mission.TargetCity! })
@@ -366,13 +377,20 @@ public static class StatisticsDashboardMapper
                 sourceById.TryGetValue(city, out var sourceCity);
                 var hasOwnedGarage = sourceCity?.HasOwnedGarage ?? false;
                 var isGarageEligible = sourceCity?.IsGarageEligible ?? false;
-                var expansionOutbound = outbound
+                var businessOutbound = businessMissions
+                    .Where(mission => StringComparer.OrdinalIgnoreCase.Equals(NormalizeCityId(mission.SourceCity), city))
+                    .ToList();
+                var businessInbound = businessMissions
+                    .Where(mission => StringComparer.OrdinalIgnoreCase.Equals(NormalizeCityId(mission.TargetCity), city))
+                    .ToList();
+                var expansionOutbound = businessOutbound
                     .Where(m => m.GarageId is null ||
                                 !StringComparer.OrdinalIgnoreCase.Equals(ExtractGarageCitySlug(m.GarageId), city))
                     .ToList();
                 var expansionScore = (hasOwnedGarage || !isGarageEligible)
                     ? 0m
-                    : Math.Round(expansionOutbound.Count + inbound.Count + (expansionOutbound.Sum(m => m.Profit) / 10000m), 2, MidpointRounding.AwayFromZero);
+                    : Math.Round(expansionOutbound.Count + businessInbound.Count + (expansionOutbound.Sum(m => m.Profit) / 10000m), 2, MidpointRounding.AwayFromZero);
+                var playerRouteSignal = BuildPlayerRouteSignal(city, playerMissions);
 
                 return new CityDto(
                     city,
@@ -383,11 +401,33 @@ public static class StatisticsDashboardMapper
                     outbound.Sum(mission => mission.Profit),
                     inbound.Sum(mission => mission.Profit),
                     bidirectionalProfit,
-                    expansionScore);
+                    expansionScore,
+                    playerRouteSignal.VisitCount,
+                    playerRouteSignal.BidirectionalProfit,
+                    playerRouteSignal.Score);
             })
             .OrderByDescending(city => city.HasOwnedGarage)
             .ThenBy(city => city.Id, StringComparer.OrdinalIgnoreCase)
             .ToList();
+    }
+
+    private static (int VisitCount, long BidirectionalProfit, decimal Score) BuildPlayerRouteSignal(
+        string city,
+        IReadOnlyCollection<MissionStatistic> playerMissions)
+    {
+        var playerCityMissions = playerMissions
+            .Where(HasRoute)
+            .Where(mission =>
+                StringComparer.OrdinalIgnoreCase.Equals(NormalizeCityId(mission.SourceCity), city) ||
+                StringComparer.OrdinalIgnoreCase.Equals(NormalizeCityId(mission.TargetCity), city))
+            .ToList();
+        var visitCount = playerCityMissions.Count;
+        var bidirectionalProfit = playerCityMissions.Sum(mission => mission.Profit);
+        var hasOutbound = playerCityMissions.Any(mission => StringComparer.OrdinalIgnoreCase.Equals(NormalizeCityId(mission.SourceCity), city));
+        var hasInbound = playerCityMissions.Any(mission => StringComparer.OrdinalIgnoreCase.Equals(NormalizeCityId(mission.TargetCity), city));
+        var bidirectionalBonus = hasOutbound && hasInbound ? 2m : 0m;
+        var score = Math.Round(visitCount + bidirectionalBonus + (bidirectionalProfit / 10000m), 2, MidpointRounding.AwayFromZero);
+        return (visitCount, bidirectionalProfit, score);
     }
 
     private static string? ExtractGarageCitySlug(string garageId)

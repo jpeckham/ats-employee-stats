@@ -37,6 +37,20 @@ public sealed class RecommendNextGarageCityUseCaseTests
     }
 
     [Fact]
+    public async Task RecommendAsync_uses_player_route_score_as_tie_breaker_after_expansion_score()
+    {
+        var useCase = CreateUseCase();
+
+        var recommendation = await useCase.RecommendAsync("player-routes", new DashboardQueryOptions(), CancellationToken.None);
+
+        Assert.NotNull(recommendation);
+        Assert.Equal("denver", recommendation.CityId);
+        Assert.Equal(2.0m, recommendation.ExpansionScore);
+        Assert.Equal(4.95m, recommendation.PlayerRouteScore);
+        Assert.Contains("player routes", recommendation.Reason);
+    }
+
+    [Fact]
     public async Task RecommendAsync_returns_null_when_company_or_candidate_is_missing()
     {
         var useCase = CreateUseCase();
@@ -103,6 +117,23 @@ public sealed class RecommendNextGarageCityUseCaseTests
                     [],
                     [
                         new CityStatistic("phoenix", "Phoenix", true, true, 5, 4000, 3000, 7000, 4.0m)
+                    ],
+                    [],
+                    []),
+                new CompanyStatistics(
+                    "player-routes",
+                    "Player Routes",
+                    updated,
+                    [],
+                    [],
+                    [],
+                    [],
+                    [],
+                    [],
+                    [],
+                    [
+                        new CityStatistic("denver", "Denver", false, true, 2, 1000, 1000, 2000, 2.0m, PlayerVisitCount: 2, PlayerBidirectionalProfit: 9500, PlayerRouteScore: 4.95m),
+                        new CityStatistic("spokane", "Spokane", false, true, 2, 3000, 3000, 6000, 2.0m, PlayerVisitCount: 0, PlayerBidirectionalProfit: 0, PlayerRouteScore: 0m)
                     ],
                     [],
                     [])

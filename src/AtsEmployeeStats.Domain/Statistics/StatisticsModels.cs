@@ -178,7 +178,10 @@ public sealed record CityStatistic(
     long OutboundProfit,
     long InboundProfit,
     long BidirectionalProfit,
-    decimal ExpansionScore);
+    decimal ExpansionScore,
+    int PlayerVisitCount = 0,
+    long PlayerBidirectionalProfit = 0,
+    decimal PlayerRouteScore = 0);
 
 public sealed record RouteStatistic(
     string OriginCityId,
