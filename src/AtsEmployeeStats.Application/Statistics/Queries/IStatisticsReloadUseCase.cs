@@ -16,4 +16,9 @@ public interface IStatisticsReloadUseCase
         DashboardQueryOptions options,
         CancellationToken cancellationToken,
         IProgress<SaveLoadProgress>? progress = null);
+
+    Task<DashboardStatisticsDto> SyncAsync(
+        DashboardQueryOptions options,
+        CancellationToken cancellationToken,
+        IProgress<SaveLoadProgress>? progress = null);
 }

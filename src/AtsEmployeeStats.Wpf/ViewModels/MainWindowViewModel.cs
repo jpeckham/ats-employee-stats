@@ -107,7 +107,33 @@ public sealed partial class MainWindowViewModel(
         }
         else if (_dashboard is null)
         {
-            await RefreshAsync();
+            await SyncOnStartupAsync();
+        }
+    }
+
+    private async Task SyncOnStartupAsync()
+    {
+        try
+        {
+            IsBusy = true;
+            IsLoadProgressVisible = true;
+            ResetLoadProgress();
+            StatusText = "Checking for new save files...";
+            var progress = new Progress<SaveLoadProgress>(ApplyLoadProgress);
+            _dashboard = await Task.Run(() => reloadUseCase.SyncAsync(_query.ToOptions(), CancellationToken.None, progress));
+            BuildExplorer(_dashboard.Companies);
+            SelectedDetail = new CompaniesDetailViewModel(_dashboard.Companies);
+            UpdateNavigationState();
+            StatusText = $"Loaded {_dashboard.Companies.Count:N0} companies";
+        }
+        catch (Exception ex)
+        {
+            StatusText = $"Unable to load statistics: {ex.Message}";
+        }
+        finally
+        {
+            IsBusy = false;
+            IsLoadProgressVisible = false;
         }
     }
 

@@ -41,6 +41,28 @@ public sealed class StatisticsReloadUseCase(StatisticsService statisticsService)
             options.ExcludePlayerDriver);
     }
 
+    public async Task<DashboardStatisticsDto> SyncAsync(
+        DashboardQueryOptions options,
+        CancellationToken cancellationToken,
+        IProgress<SaveLoadProgress>? progress = null)
+    {
+        await statisticsService.IngestAsync(cancellationToken, progress, force: false);
+        progress?.Report(new SaveLoadProgress(
+            SaveLoadStage.LoadingDashboard,
+            CompletedFiles: 0,
+            TotalFiles: 0,
+            CompletedUnits: 0,
+            TotalUnits: 0,
+            Message: "Loading dashboard statistics..."));
+        var statistics = await statisticsService.LoadAsync(cancellationToken, progress);
+        return StatisticsDashboardMapper.ToDashboardDto(
+            statistics,
+            options.FromDay ?? 0,
+            options.ToDay,
+            options.Sort,
+            options.ExcludePlayerDriver);
+    }
+
     private static IProgress<SaveLoadProgress>? ToProgress(
         IProgressOutputBoundaryAdapter? output,
         CancellationToken cancellationToken) =>
