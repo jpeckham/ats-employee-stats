@@ -90,7 +90,7 @@ public sealed class GameSourcePresenterTests
         Assert.Equal("Ats", presenter.CurrentWizardGame?.GameKey);
         Assert.Equal(3, backgroundRunner.RunCount);
         Assert.Equal(@"D:\ConfiguredATS", presenter.CurrentWizardGame?.InstallCandidates.Single(candidate => candidate.IsSelected).Path);
-        Assert.Contains(presenter.CurrentWizardGame!.SaveRootCandidates, candidate => candidate.Path == @"D:\ConfiguredSaves" && candidate.IsSelected);
+        Assert.Contains(presenter.CurrentWizardGame!.SaveRootCandidates, candidate => candidate.Path == @"D:\ConfiguredSaves" && !candidate.CanSelect && !candidate.IsSelected);
         Assert.Contains(presenter.CurrentWizardGame.SaveRootCandidates, candidate => candidate.Path == @"C:\ATS\profiles" && candidate.IsSelected);
 
         presenter.NextSourceWizardStep();
@@ -102,6 +102,52 @@ public sealed class GameSourcePresenterTests
 
         Assert.Equal("Step 1 of 2", presenter.SourceWizardStepText);
         Assert.Equal("Ats", presenter.CurrentWizardGame?.GameKey);
+    }
+
+    [Fact]
+    public async Task StartSourceWizardAsync_leaves_zero_save_candidates_visible_but_unselected_and_unselectable()
+    {
+        var presenter = CreatePresenter(
+            installations:
+            [
+                new GameInstallation(GameType.Ats, null, null, null, false),
+                new GameInstallation(GameType.Ets2, null, null, null, false)
+            ],
+            settings: new GameSourceSettings(
+            [
+                new GameSourceConfiguration(GameType.Ats, true, null, null, @"D:\ConfiguredEmpty", [@"D:\ConfiguredEmpty"])
+            ]),
+            candidates: new Dictionary<GameType, GameSourceCandidates>
+            {
+                [GameType.Ats] = new(
+                    GameType.Ats,
+                    [],
+                    [
+                        new GameSaveRootCandidate(GameType.Ats, @"C:\ATS\profiles", true, 2, ["profiles"]),
+                        new GameSaveRootCandidate(GameType.Ats, @"D:\ConfiguredEmpty", true, 0, ["configured"])
+                    ]),
+                [GameType.Ets2] = new(GameType.Ets2, [], [])
+            },
+            validationResults: new Dictionary<string, GamePathValidation>
+            {
+                [$"{GameType.Ats}|C:\\ATS\\profiles"] = new(@"C:\ATS\profiles", true, ["profiles"]),
+                [$"{GameType.Ats}|D:\\ConfiguredEmpty"] = new(@"D:\ConfiguredEmpty", false, ["no saves"])
+            });
+        await presenter.LoadGameSourcesAsync();
+
+        await presenter.StartSourceWizardAsync();
+
+        var emptyCandidate = presenter.CurrentWizardGame!.SaveRootCandidates.Single(candidate => candidate.Path == @"D:\ConfiguredEmpty");
+        Assert.False(emptyCandidate.CanSelect);
+        Assert.False(emptyCandidate.IsSelected);
+
+        emptyCandidate.IsSelected = true;
+
+        Assert.False(emptyCandidate.IsSelected);
+
+        var result = await presenter.FinishSourceWizardAsync();
+
+        Assert.True(result.Succeeded);
     }
 
     [Fact]

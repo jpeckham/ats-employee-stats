@@ -86,12 +86,13 @@ public sealed partial class GameSourceWizardGameViewModel : ObservableObject
         foreach (var saveRoot in SaveRootCandidates)
         {
             saveRoot.IsSelected =
-                (!string.IsNullOrWhiteSpace(existing?.SavePath) &&
-                 string.Equals(saveRoot.Path, existing.SavePath, StringComparison.OrdinalIgnoreCase)) ||
-                saveRoot.IsValid;
+                saveRoot.CanSelect &&
+                ((!string.IsNullOrWhiteSpace(existing?.SavePath) &&
+                  string.Equals(saveRoot.Path, existing.SavePath, StringComparison.OrdinalIgnoreCase)) ||
+                 saveRoot.IsValid);
         }
 
-        HasGame = existing?.Enabled ?? SaveRootCandidates.Any(candidate => candidate.IsValid);
+        HasGame = existing?.Enabled ?? SaveRootCandidates.Any(candidate => candidate.CanSelect);
     }
 
     public string GameKey { get; }
@@ -135,10 +136,17 @@ public sealed partial class GameSourceWizardSaveRootCandidateViewModel(
 
     public int SaveFileCount { get; } = saveFileCount;
 
+    public bool CanSelect { get; } = saveFileCount > 0;
+
     public string ProofText { get; } = string.Join("; ", proofs);
 
-    [ObservableProperty]
     private bool isSelected;
+
+    public bool IsSelected
+    {
+        get => isSelected;
+        set => SetProperty(ref isSelected, CanSelect && value);
+    }
 }
 
 public sealed class GameSaveRowViewModel

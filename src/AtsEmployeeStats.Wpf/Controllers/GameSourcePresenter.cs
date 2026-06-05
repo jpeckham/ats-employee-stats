@@ -176,12 +176,12 @@ public sealed partial class GameSourcePresenter(
     private static GameSourceConfiguration ToConfiguration(GameSourceWizardGameViewModel game)
     {
         var savePaths = game.SaveRootCandidates
-            .Where(candidate => candidate.IsSelected)
+            .Where(candidate => candidate.CanSelect && candidate.IsSelected)
             .Select(candidate => candidate.Path)
             .ToList();
         return new(
             ParseGameType(game.GameKey),
-            game.HasGame,
+            game.HasGame && savePaths.Count > 0,
             game.InstallCandidates.FirstOrDefault(candidate => candidate.IsSelected)?.Path,
             DeriveProfilePath(savePaths.FirstOrDefault()),
             savePaths.FirstOrDefault(),

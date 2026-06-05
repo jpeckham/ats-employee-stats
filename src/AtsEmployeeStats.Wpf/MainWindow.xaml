@@ -387,6 +387,7 @@
                                                         <ColumnDefinition Width="Auto" />
                                                     </Grid.ColumnDefinitions>
                                                     <CheckBox IsChecked="{Binding IsSelected}"
+                                                              IsEnabled="{Binding CanSelect}"
                                                               VerticalAlignment="Center"
                                                               Margin="0,0,8,0" />
                                                     <StackPanel Grid.Column="1">
