@@ -270,6 +270,31 @@ public sealed class SqliteMedallionSaveSnapshotSourceTests : IDisposable
     }
 
     [Fact]
+    public async Task IngestAsync_persists_distinct_jobs_when_raw_nameless_ids_are_reused()
+    {
+        await WriteProfitLogSaveAsync("older", "_nameless.reused.job", "cargo.medicine", "phoenix", "denver", 3000, 100, DateTime.UtcNow.AddMinutes(-10));
+        await WriteProfitLogSaveAsync("newer", "_nameless.reused.job", "cargo.apples", "denver", "phoenix", 2500, 101, DateTime.UtcNow);
+        var source = new SqliteMedallionSaveSnapshotSource(_root, _dbPath);
+        var service = new StatisticsService(source);
+
+        await service.IngestAsync(CancellationToken.None);
+
+        using var connection = OpenTestConnection();
+        await connection.OpenAsync();
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            select count(*), count(distinct job_id)
+            from silver_jobs
+            where company_id = 'desert-line'
+            """;
+
+        await using var reader = await command.ExecuteReaderAsync();
+        Assert.True(await reader.ReadAsync());
+        Assert.Equal(2, reader.GetInt64(0));
+        Assert.Equal(2, reader.GetInt64(1));
+    }
+
+    [Fact]
     public async Task StatisticsService_persists_enriched_truck_metadata_and_recent_driver_jobs()
     {
         await WriteEnrichedAnalyticSaveAsync();
@@ -960,6 +985,61 @@ public sealed class SqliteMedallionSaveSnapshotSourceTests : IDisposable
             }
             """);
         File.SetLastWriteTimeUtc(savePath, DateTime.UtcNow);
+    }
+
+    private async Task WriteProfitLogSaveAsync(
+        string slot,
+        string entryId,
+        string cargo,
+        string sourceCity,
+        string destinationCity,
+        long revenue,
+        int timestampDay,
+        DateTime lastWriteTimeUtc)
+    {
+        var saveDirectory = Path.Combine(_root, "profiles", "506C61796572", "save", slot);
+        Directory.CreateDirectory(saveDirectory);
+        var savePath = Path.Combine(saveDirectory, "game.sii");
+        await File.WriteAllTextAsync(savePath, $$"""
+            SiiNunit
+            {
+            player : player {
+              company_name: "Desert Line"
+            }
+
+            garage : garage.phoenix {
+              city: phoenix
+              employees[0]: driver.alice
+              vehicles[0]: truck.alice
+            }
+
+            driver : driver.alice {
+              name: "Alice Ramirez"
+              assigned_truck: truck.alice
+              profit_log: profit_log.alice
+            }
+
+            vehicle : truck.alice {
+              license_plate: "ATS-100"
+            }
+
+            profit_log : profit_log.alice {
+              stats_data[0]: {{entryId}}
+            }
+
+            profit_log_entry : {{entryId}} {
+              revenue: {{revenue}}
+              wage: 0
+              maintenance: 0
+              fuel: 0
+              cargo: {{cargo}}
+              source_city: {{sourceCity}}
+              destination_city: {{destinationCity}}
+              timestamp_day: {{timestampDay}}
+            }
+            }
+            """);
+        File.SetLastWriteTimeUtc(savePath, lastWriteTimeUtc);
     }
 
     private static async Task<T> QuerySingleAsync<T>(

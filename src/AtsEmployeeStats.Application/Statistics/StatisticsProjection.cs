@@ -1,5 +1,6 @@
 using AtsEmployeeStats.Domain.Saves;
 using AtsEmployeeStats.Domain.Statistics;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
 
@@ -153,7 +154,7 @@ public static partial class StatisticsProjection
             .GroupBy(pair => pair.UnitId, StringComparer.OrdinalIgnoreCase)
             .ToDictionary(g => g.Key, g => g.First().LicensePlate!, StringComparer.OrdinalIgnoreCase);
 
-        var missionStats = snapshots
+        var missionStats = EnsureUniqueMissionIds(snapshots
             .SelectMany(BuildSnapshotMissions)
             .GroupBy(mission => mission.DeduplicationKey, StringComparer.OrdinalIgnoreCase)
             .Select(group =>
@@ -181,7 +182,7 @@ public static partial class StatisticsProjection
             .Where(mission => mission.Profit != 0)
             .OrderByDescending(mission => mission.Profit)
             .ThenBy(mission => mission.Id, StringComparer.OrdinalIgnoreCase)
-            .ToList();
+            .ToList());
 
         var trailerStats = missionStats
             .Where(mission => !string.IsNullOrWhiteSpace(mission.TrailerType))
@@ -984,6 +985,45 @@ public static partial class StatisticsProjection
         }
 
         return source.Id;
+    }
+
+    private static List<MissionStatistic> EnsureUniqueMissionIds(List<MissionStatistic> missions)
+    {
+        var duplicateIds = missions
+            .GroupBy(mission => mission.Id, StringComparer.OrdinalIgnoreCase)
+            .Where(group => group.Count() > 1)
+            .Select(group => group.Key)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        if (duplicateIds.Count == 0)
+        {
+            return missions;
+        }
+
+        return missions
+            .Select(mission => duplicateIds.Contains(mission.Id)
+                ? mission with { Id = $"{mission.Id}:{StableHash(BuildMissionIdentityKey(mission))}" }
+                : mission)
+            .ToList();
+    }
+
+    private static string BuildMissionIdentityKey(MissionStatistic mission) =>
+        string.Join(
+            '|',
+            mission.DriverId ?? string.Empty,
+            mission.TruckId ?? string.Empty,
+            mission.TrailerId ?? string.Empty,
+            mission.TrailerType ?? string.Empty,
+            mission.Cargo ?? string.Empty,
+            mission.SourceCity ?? string.Empty,
+            mission.TargetCity ?? string.Empty,
+            mission.Profit.ToString(),
+            mission.TimestampDay?.ToString() ?? string.Empty);
+
+    private static string StableHash(string value)
+    {
+        var hash = SHA256.HashData(Encoding.UTF8.GetBytes(value));
+        return Convert.ToHexString(hash)[..16].ToLowerInvariant();
     }
 
     private static Dictionary<string, string> BuildReverseLookup(IEnumerable<SiiUnit> owners, params string[] arrayNames)
