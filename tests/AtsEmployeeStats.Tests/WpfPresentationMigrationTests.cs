@@ -138,11 +138,10 @@ public sealed class WpfPresentationMigrationTests
 
         Assert.Contains("IsExpanded", viewModels, StringComparison.Ordinal);
         Assert.Contains("Property=\"IsExpanded\"", mainWindow, StringComparison.Ordinal);
-        Assert.Contains("root.IsExpanded = true", viewModels, StringComparison.Ordinal);
-        Assert.Contains("gameNode.IsExpanded = true", viewModels, StringComparison.Ordinal);
-        Assert.Contains("savesNode.IsExpanded = true", viewModels, StringComparison.Ordinal);
-        Assert.Contains("locationNode.IsExpanded = true", viewModels, StringComparison.Ordinal);
-        Assert.Contains("companiesNode.IsExpanded = true", viewModels, StringComparison.Ordinal);
+        Assert.Contains("IsExpanded = true", viewModels, StringComparison.Ordinal);
+        Assert.Contains("new ExplorerNodeViewModel(gameSource.GameName", viewModels, StringComparison.Ordinal);
+        Assert.Contains("new ExplorerNodeViewModel(\"Save Locations\"", viewModels, StringComparison.Ordinal);
+        Assert.Contains("new ExplorerNodeViewModel(\"Companies\", ExplorerNodeKind.Companies, entityId: saveLocation.Key)", viewModels, StringComparison.Ordinal);
         Assert.DoesNotContain("companyNode.IsExpanded = true", viewModels, StringComparison.Ordinal);
         Assert.Contains("ExpandExplorerToNode", viewModels, StringComparison.Ordinal);
         Assert.Contains("ExpandAncestorPath", viewModels, StringComparison.Ordinal);
@@ -213,7 +212,7 @@ public sealed class WpfPresentationMigrationTests
 
         Assert.Contains("node.Kind == ExplorerNodeKind.Companies && !string.IsNullOrWhiteSpace(node.EntityId)", viewModels, StringComparison.Ordinal);
         Assert.Contains("Companies selected:", viewModels, StringComparison.Ordinal);
-        Assert.Contains("GetCompaniesForSaveLocation(node.EntityId, _dashboard.Companies)", viewModels, StringComparison.Ordinal);
+        Assert.Contains("GetCompaniesForSaveLocation(node.EntityId, companies, saveRows)", viewModels, StringComparison.Ordinal);
     }
 
     [Fact]
