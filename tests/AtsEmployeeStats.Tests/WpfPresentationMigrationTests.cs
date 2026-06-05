@@ -232,6 +232,17 @@ public sealed class WpfPresentationMigrationTests
     }
 
     [Fact]
+    public void Wpf_progress_values_bind_one_way_to_read_only_presenter_state()
+    {
+        var root = FindRepositoryRoot();
+        var wpfRoot = Path.Combine(root, "src", "AtsEmployeeStats.Wpf");
+        var mainWindow = File.ReadAllText(Path.Combine(wpfRoot, "MainWindow.xaml"));
+
+        Assert.Contains("Value=\"{Binding SaveFileProgressValue, Mode=OneWay}\"", mainWindow, StringComparison.Ordinal);
+        Assert.Contains("Value=\"{Binding SaveContentProgressValue, Mode=OneWay}\"", mainWindow, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Wpf_startup_and_source_discovery_do_not_run_blocking_work_on_dispatcher()
     {
         var root = FindRepositoryRoot();

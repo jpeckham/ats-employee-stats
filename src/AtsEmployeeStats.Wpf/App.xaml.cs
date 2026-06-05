@@ -72,6 +72,8 @@ public partial class App : System.Windows.Application
         services.AddSingleton<IRecommendTrailersForGarageUseCase, RecommendTrailersForGarageUseCase>();
         services.AddSingleton<IRecommendDriverSkillsUseCase, RecommendDriverSkillsUseCase>();
         services.AddSingleton<IDiagnoseUnderperformersUseCase, DiagnoseUnderperformersUseCase>();
+        services.AddSingleton<ExplorerPresenter>();
+        services.AddSingleton<DashboardPresenter>();
         services.AddSingleton<MainWindowPresenter>();
         services.AddSingleton<MainWindow>();
         return services;
