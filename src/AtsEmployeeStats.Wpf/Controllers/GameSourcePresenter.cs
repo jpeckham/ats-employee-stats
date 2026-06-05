@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using System.IO;
 using AtsEmployeeStats.Application.Saves;
+using AtsEmployeeStats.Wpf.Services;
 using AtsEmployeeStats.Wpf.Threading;
 using AtsEmployeeStats.Wpf.ViewModels;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -10,7 +11,9 @@ namespace AtsEmployeeStats.Wpf.Controllers;
 public sealed partial class GameSourcePresenter(
     GameSourceManagementUseCase gameSourceManagement,
     GameSaveCatalogUseCase gameSaveCatalog,
-    IBackgroundRunner backgroundRunner) : ObservableObject
+    IBackgroundRunner backgroundRunner,
+    IDatabaseDiskSpaceService databaseDiskSpaceService,
+    ISourceWizardConfirmation sourceWizardConfirmation) : ObservableObject
 {
     [ObservableProperty]
     private bool isSourceWizardVisible;
@@ -117,6 +120,26 @@ public sealed partial class GameSourcePresenter(
         try
         {
             var configurations = SourceWizardGames.Select(ToConfiguration).ToList();
+            var selectedSaveRoots = configurations
+                .Where(source => source.Enabled)
+                .SelectMany(source => source.EffectiveSavePaths)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            var estimate = databaseDiskSpaceService.Estimate(selectedSaveRoots);
+            if (!estimate.HasEnoughSpace)
+            {
+                return (
+                    false,
+                    "Building the Employee Database takes at least " +
+                    $"{SourceWizardConfirmation.FormatBytes(estimate.ProjectedDatabaseBytes)} of total space. " +
+                    $"This configuration needs {SourceWizardConfirmation.FormatBytes(estimate.RequiredAdditionalBytes)} more free space. " +
+                    $"You have {SourceWizardConfirmation.FormatBytes(estimate.FreeBytes)} free. " +
+                    "Free up space or remove old save games before saving this configuration.");
+            }
+
+            if (!sourceWizardConfirmation.ConfirmDatabaseBuild(estimate))
+                return (false, "Source setup was not saved.");
+
             var result = await backgroundRunner.RunAsync(() => gameSourceManagement.SaveValidatedAsync(
                 configurations,
                 CancellationToken.None));

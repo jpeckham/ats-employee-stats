@@ -5,6 +5,7 @@ using AtsEmployeeStats.Application.Statistics;
 using AtsEmployeeStats.Application.Statistics.Queries;
 using AtsEmployeeStats.Infrastructure.Saves;
 using AtsEmployeeStats.Wpf.Controllers;
+using AtsEmployeeStats.Wpf.Services;
 using AtsEmployeeStats.Wpf.Threading;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -38,6 +39,8 @@ public partial class App : System.Windows.Application
         services.AddSingleton<IConfiguredGameSaveDiscovery, LocalConfiguredGameSaveDiscovery>();
         services.AddSingleton<GameSaveCatalogUseCase>();
         services.AddSingleton<IBackgroundRunner, TaskBackgroundRunner>();
+        services.AddSingleton<IDatabaseDiskSpaceService>(_ => LocalDatabaseDiskSpaceService.CreateDefault());
+        services.AddSingleton<ISourceWizardConfirmation, SourceWizardConfirmation>();
         services.AddSingleton<GameSourcePresenter>();
         services.AddSingleton<ISaveSnapshotSource>(sp =>
         {

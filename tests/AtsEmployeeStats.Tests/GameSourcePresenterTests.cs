@@ -1,5 +1,6 @@
 using AtsEmployeeStats.Application.Saves;
 using AtsEmployeeStats.Wpf.Controllers;
+using AtsEmployeeStats.Wpf.Services;
 using AtsEmployeeStats.Wpf.Threading;
 
 namespace AtsEmployeeStats.Tests;
@@ -194,6 +195,145 @@ public sealed class GameSourcePresenterTests
         Assert.Single(presenter.GameSources, source => source.GameKey == "Ats" && source.Enabled);
     }
 
+    [Fact]
+    public async Task FinishSourceWizardAsync_blocks_save_when_selected_saves_need_more_space_than_available()
+    {
+        var settings = new InMemoryGameSourceSettingsStore(new GameSourceSettings([]));
+        var diskSpace = new StubDatabaseDiskSpaceService(
+            new DatabaseDiskSpaceEstimate(
+                SelectedSaveBytes: 1_000,
+                ProjectedDatabaseBytes: 2_100,
+                ExistingDatabaseBytes: 0,
+                RequiredAdditionalBytes: 2_100,
+                FreeBytes: 2_000,
+                HasEnoughSpace: false));
+        var confirmation = new StubSourceWizardConfirmation(true);
+        var presenter = CreatePresenter(
+            installations:
+            [
+                new GameInstallation(GameType.Ats, null, null, null, false)
+            ],
+            settingsStore: settings,
+            candidates: new Dictionary<GameType, GameSourceCandidates>
+            {
+                [GameType.Ats] = new(
+                    GameType.Ats,
+                    [],
+                    [new GameSaveRootCandidate(GameType.Ats, @"C:\ATS\profiles", true, 2, ["profiles"])]),
+                [GameType.Ets2] = new(GameType.Ets2, [], [])
+            },
+            diskSpaceService: diskSpace,
+            sourceWizardConfirmation: confirmation);
+        await presenter.LoadGameSourcesAsync();
+        await presenter.StartSourceWizardAsync();
+        presenter.CurrentWizardGame!.HasGame = true;
+
+        var result = await presenter.FinishSourceWizardAsync();
+
+        Assert.False(result.Succeeded);
+        Assert.Contains("Building the Employee Database takes at least 2.1 KB", result.StatusText);
+        Assert.Contains("needs 2.1 KB more free space", result.StatusText);
+        Assert.Contains("You have 2.0 KB free", result.StatusText);
+        Assert.Contains("free up space or remove old save games", result.StatusText, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal([@"C:\ATS\profiles"], diskSpace.SaveRoots);
+        Assert.Equal(0, confirmation.CallCount);
+        Assert.Empty(settings.SavedSettings.Sources);
+    }
+
+    [Fact]
+    public async Task FinishSourceWizardAsync_keeps_wizard_open_when_database_build_confirmation_is_cancelled()
+    {
+        var settings = new InMemoryGameSourceSettingsStore(new GameSourceSettings([]));
+        var diskSpace = new StubDatabaseDiskSpaceService(
+            new DatabaseDiskSpaceEstimate(
+                SelectedSaveBytes: 1_000,
+                ProjectedDatabaseBytes: 2_100,
+                ExistingDatabaseBytes: 0,
+                RequiredAdditionalBytes: 2_100,
+                FreeBytes: 4_096,
+                HasEnoughSpace: true));
+        var confirmation = new StubSourceWizardConfirmation(false);
+        var presenter = CreatePresenter(
+            installations:
+            [
+                new GameInstallation(GameType.Ats, null, null, null, false)
+            ],
+            settingsStore: settings,
+            candidates: new Dictionary<GameType, GameSourceCandidates>
+            {
+                [GameType.Ats] = new(
+                    GameType.Ats,
+                    [],
+                    [new GameSaveRootCandidate(GameType.Ats, @"C:\ATS\profiles", true, 2, ["profiles"])]),
+                [GameType.Ets2] = new(GameType.Ets2, [], [])
+            },
+            diskSpaceService: diskSpace,
+            sourceWizardConfirmation: confirmation);
+        await presenter.LoadGameSourcesAsync();
+        await presenter.StartSourceWizardAsync();
+        presenter.CurrentWizardGame!.HasGame = true;
+
+        var result = await presenter.FinishSourceWizardAsync();
+
+        Assert.False(result.Succeeded);
+        Assert.Equal("Source setup was not saved.", result.StatusText);
+        Assert.True(presenter.IsSourceWizardVisible);
+        Assert.Equal(1, confirmation.CallCount);
+        Assert.Same(diskSpace.EstimateResult, confirmation.Estimates.Single());
+        Assert.Empty(settings.SavedSettings.Sources);
+    }
+
+    [Fact]
+    public async Task FinishSourceWizardAsync_confirms_database_space_before_saving_selected_sources()
+    {
+        var settings = new InMemoryGameSourceSettingsStore(new GameSourceSettings([]));
+        var diskSpace = new StubDatabaseDiskSpaceService(
+            new DatabaseDiskSpaceEstimate(
+                SelectedSaveBytes: 1_000,
+                ProjectedDatabaseBytes: 2_100,
+                ExistingDatabaseBytes: 0,
+                RequiredAdditionalBytes: 2_100,
+                FreeBytes: 4_096,
+                HasEnoughSpace: true));
+        var confirmation = new StubSourceWizardConfirmation(true);
+        var presenter = CreatePresenter(
+            installations:
+            [
+                new GameInstallation(GameType.Ats, null, null, null, false)
+            ],
+            settingsStore: settings,
+            candidates: new Dictionary<GameType, GameSourceCandidates>
+            {
+                [GameType.Ats] = new(
+                    GameType.Ats,
+                    [],
+                    [
+                        new GameSaveRootCandidate(GameType.Ats, @"C:\ATS\profiles", true, 2, ["profiles"]),
+                        new GameSaveRootCandidate(GameType.Ats, @"C:\ATS\steam_profiles", true, 1, ["steam profiles"])
+                    ]),
+                [GameType.Ets2] = new(GameType.Ets2, [], [])
+            },
+            validationResults: new Dictionary<string, GamePathValidation>
+            {
+                [$"{GameType.Ats}|C:\\ATS\\profiles"] = new(@"C:\ATS\profiles", true, ["profiles"]),
+                [$"{GameType.Ats}|C:\\ATS\\steam_profiles"] = new(@"C:\ATS\steam_profiles", true, ["steam profiles"])
+            },
+            diskSpaceService: diskSpace,
+            sourceWizardConfirmation: confirmation);
+        await presenter.LoadGameSourcesAsync();
+        await presenter.StartSourceWizardAsync();
+        presenter.CurrentWizardGame!.HasGame = true;
+
+        var result = await presenter.FinishSourceWizardAsync();
+
+        Assert.True(result.Succeeded);
+        Assert.Equal([@"C:\ATS\profiles", @"C:\ATS\steam_profiles"], diskSpace.SaveRoots);
+        Assert.Equal(1, confirmation.CallCount);
+        Assert.Same(diskSpace.EstimateResult, confirmation.Estimates.Single());
+        Assert.False(presenter.IsSourceWizardVisible);
+        Assert.True(settings.SavedSettings.WizardCompleted);
+    }
+
     private static GameSourcePresenter CreatePresenter(
         IReadOnlyList<GameInstallation> installations,
         GameSourceSettings? settings = null,
@@ -201,13 +341,20 @@ public sealed class GameSourcePresenterTests
         IReadOnlyList<SaveGame>? saves = null,
         IReadOnlyDictionary<GameType, GameSourceCandidates>? candidates = null,
         IReadOnlyDictionary<string, GamePathValidation>? validationResults = null,
-        IBackgroundRunner? backgroundRunner = null)
+        IBackgroundRunner? backgroundRunner = null,
+        IDatabaseDiskSpaceService? diskSpaceService = null,
+        ISourceWizardConfirmation? sourceWizardConfirmation = null)
     {
         var discovery = new StubGameSourceDiscovery(installations, candidates, validationResults);
         var store = settingsStore ?? new InMemoryGameSourceSettingsStore(settings ?? new GameSourceSettings([]));
         var sourceUseCase = new GameSourceManagementUseCase(discovery, store);
         var catalogUseCase = new GameSaveCatalogUseCase(new StubConfiguredGameSaveDiscovery(saves ?? []));
-        return new GameSourcePresenter(sourceUseCase, catalogUseCase, backgroundRunner ?? new ImmediateBackgroundRunner());
+        return new GameSourcePresenter(
+            sourceUseCase,
+            catalogUseCase,
+            backgroundRunner ?? new ImmediateBackgroundRunner(),
+            diskSpaceService ?? new StubDatabaseDiskSpaceService(new DatabaseDiskSpaceEstimate(0, 0, 0, 0, long.MaxValue, true)),
+            sourceWizardConfirmation ?? new StubSourceWizardConfirmation(true));
     }
 
     private sealed class RecordingBackgroundRunner : IBackgroundRunner
@@ -266,5 +413,32 @@ public sealed class GameSourcePresenterTests
             GameSourceConfiguration source,
             CancellationToken cancellationToken) =>
             Task.FromResult(saves);
+    }
+
+    private sealed class StubDatabaseDiskSpaceService(DatabaseDiskSpaceEstimate estimate) : IDatabaseDiskSpaceService
+    {
+        public DatabaseDiskSpaceEstimate EstimateResult { get; } = estimate;
+
+        public IReadOnlyList<string> SaveRoots { get; private set; } = [];
+
+        public DatabaseDiskSpaceEstimate Estimate(IReadOnlyList<string> saveRoots)
+        {
+            SaveRoots = saveRoots;
+            return EstimateResult;
+        }
+    }
+
+    private sealed class StubSourceWizardConfirmation(bool result) : ISourceWizardConfirmation
+    {
+        public int CallCount { get; private set; }
+
+        public List<DatabaseDiskSpaceEstimate> Estimates { get; } = [];
+
+        public bool ConfirmDatabaseBuild(DatabaseDiskSpaceEstimate estimate)
+        {
+            CallCount++;
+            Estimates.Add(estimate);
+            return result;
+        }
     }
 }
