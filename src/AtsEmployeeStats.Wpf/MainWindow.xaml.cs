@@ -3,36 +3,37 @@ using System.Windows.Controls;
 using System.Windows.Data;
 using System.Windows.Input;
 using AtsEmployeeStats.Wpf.Controls;
+using AtsEmployeeStats.Wpf.Controllers;
 using AtsEmployeeStats.Wpf.ViewModels;
 
 namespace AtsEmployeeStats.Wpf;
 
 public partial class MainWindow : Window
 {
-    public MainWindow(MainWindowViewModel viewModel)
+    public MainWindow(MainWindowPresenter presenter)
     {
         InitializeComponent();
-        DataContext = viewModel;
-        Loaded += async (_, _) => await viewModel.LoadAsync();
+        DataContext = presenter;
+        Loaded += async (_, _) => await presenter.LoadAsync();
     }
 
     private void DetailTabControl_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (e.OriginalSource == sender &&
-            DataContext is MainWindowViewModel viewModel &&
+            DataContext is MainWindowPresenter presenter &&
             sender is TabControl { SelectedItem: DetailTabViewModel tab })
         {
-            viewModel.NotifyTabSelected(tab.Title);
+            presenter.NotifyTabSelected(tab.Title);
         }
     }
 
     private void Explorer_SelectedItemChanged(object sender, RoutedPropertyChangedEventArgs<object> e)
     {
-        if (DataContext is MainWindowViewModel viewModel &&
+        if (DataContext is MainWindowPresenter presenter &&
             e.NewValue is ExplorerNodeViewModel node &&
-            viewModel.SelectExplorerNodeCommand.CanExecute(node))
+            presenter.SelectExplorerNodeCommand.CanExecute(node))
         {
-            viewModel.SelectExplorerNodeCommand.Execute(node);
+            presenter.SelectExplorerNodeCommand.Execute(node);
         }
     }
 
@@ -67,10 +68,10 @@ public partial class MainWindow : Window
     private void DetailGrid_MouseDoubleClick(object sender, MouseButtonEventArgs e)
     {
         if (sender is DataGrid { SelectedItem: GridRowViewModel row } &&
-            DataContext is MainWindowViewModel viewModel &&
-            viewModel.OpenRowCommand.CanExecute(row))
+            DataContext is MainWindowPresenter presenter &&
+            presenter.OpenRowCommand.CanExecute(row))
         {
-            viewModel.OpenRowCommand.Execute(row);
+            presenter.OpenRowCommand.Execute(row);
         }
     }
 

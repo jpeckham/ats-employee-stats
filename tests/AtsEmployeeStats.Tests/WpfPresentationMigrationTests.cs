@@ -37,7 +37,7 @@ public sealed class WpfPresentationMigrationTests
         Assert.Contains("SparklineControl", codeBehind, StringComparison.Ordinal);
         Assert.Contains("MouseDoubleClick", mainWindow, StringComparison.Ordinal);
 
-        Assert.Contains("partial class MainWindowViewModel", viewModels, StringComparison.Ordinal);
+        Assert.Contains("partial class MainWindowPresenter", viewModels, StringComparison.Ordinal);
         Assert.Contains("CompanyExplorerViewModel", viewModels, StringComparison.Ordinal);
         Assert.Contains("CompanyDetailViewModel", viewModels, StringComparison.Ordinal);
         Assert.Contains("GarageDetailViewModel", viewModels, StringComparison.Ordinal);
@@ -412,6 +412,19 @@ public sealed class WpfPresentationMigrationTests
     }
 
     private static string ReadAllSource(string root, string folder)
+    {
+        if (folder == "ViewModels")
+        {
+            return string.Join(
+                Environment.NewLine,
+                ReadAllSource(root, "Controllers"),
+                ReadAllSourceFromSingleFolder(root, "ViewModels"));
+        }
+
+        return ReadAllSourceFromSingleFolder(root, folder);
+    }
+
+    private static string ReadAllSourceFromSingleFolder(string root, string folder)
     {
         var path = Path.Combine(root, folder);
         if (!Directory.Exists(path))

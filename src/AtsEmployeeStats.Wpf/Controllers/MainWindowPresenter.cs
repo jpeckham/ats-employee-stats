@@ -3,13 +3,14 @@ using System.IO;
 using AtsEmployeeStats.Application.Saves;
 using AtsEmployeeStats.Application.Statistics.Queries;
 using AtsEmployeeStats.Contracts;
+using AtsEmployeeStats.Wpf.ViewModels;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using static AtsEmployeeStats.Wpf.ViewModels.DetailHelpers;
 
-namespace AtsEmployeeStats.Wpf.ViewModels;
+namespace AtsEmployeeStats.Wpf.Controllers;
 
-public sealed partial class MainWindowViewModel(
+public sealed partial class MainWindowPresenter(
     IStatisticsDashboardUseCases dashboardUseCases,
     IStatisticsReloadUseCase reloadUseCase,
     GameSourceManagementUseCase gameSourceManagement,
@@ -160,8 +161,21 @@ public sealed partial class MainWindowViewModel(
                 foreach (var game in new[] { GameType.Ats, GameType.Ets2 })
                 {
                     var candidates = await gameSourceManagement.DiscoverCandidatesAsync(game, CancellationToken.None);
-                    var existing = rows.FirstOrDefault(source => source.Game == game);
-                    games.Add(new GameSourceWizardGameViewModel(candidates, existing));
+                    var existing = rows.FirstOrDefault(source => string.Equals(source.GameKey, game.ToString(), StringComparison.OrdinalIgnoreCase));
+                    games.Add(new GameSourceWizardGameViewModel(
+                        game.ToString(),
+                        game == GameType.Ats ? "ATS" : "ETS2",
+                        game == GameType.Ats ? "American Truck Simulator" : "Euro Truck Simulator 2",
+                        candidates.InstallCandidates.Select(candidate => new GameSourceWizardInstallCandidateViewModel(
+                            candidate.Path,
+                            candidate.IsValid,
+                            candidate.Proofs)),
+                        candidates.SaveRootCandidates.Select(candidate => new GameSourceWizardSaveRootCandidateViewModel(
+                            candidate.Path,
+                            candidate.IsValid,
+                            candidate.SaveFileCount,
+                            candidate.Proofs)),
+                        existing));
                 }
 
                 return games;
@@ -219,7 +233,7 @@ public sealed partial class MainWindowViewModel(
         try
         {
             IsBusy = true;
-            var configurations = SourceWizardGames.Select(game => game.ToConfiguration()).ToList();
+            var configurations = SourceWizardGames.Select(ToConfiguration).ToList();
             var result = await Task.Run(() => gameSourceManagement.SaveValidatedAsync(
                 configurations,
                 CancellationToken.None));
@@ -401,7 +415,7 @@ public sealed partial class MainWindowViewModel(
             var savesNode = new ExplorerNodeViewModel("Save Locations", ExplorerNodeKind.GameSaves);
             savesNode.IsExpanded = true;
             foreach (var saveLocation in GameSaves
-                .Where(save => save.Game == gameSource.Game)
+                .Where(save => save.GameKey == gameSource.GameKey)
                 .Where(save => !string.IsNullOrWhiteSpace(save.SaveRootPath))
                 .GroupBy(save => save.SaveRootPath, StringComparer.OrdinalIgnoreCase)
                 .OrderBy(group => group.Key, StringComparer.CurrentCultureIgnoreCase))
@@ -466,7 +480,7 @@ public sealed partial class MainWindowViewModel(
         return companyNode;
     }
 
-    private void ExpandExplorerToNode(RowNavigationTarget target) =>
+    private void ExpandExplorerToNode(RowNavigationTargetViewModel target) =>
         ExpandExplorerToNode(new ExplorerNodeViewModel(
             string.Empty,
             target.Kind,
@@ -570,22 +584,69 @@ public sealed partial class MainWindowViewModel(
         var sources = await Task.Run(() => gameSourceManagement.DiscoverAsync(CancellationToken.None));
         GameSources.Clear();
         foreach (var source in sources)
-            GameSources.Add(new GameSourceRowViewModel(source));
+            GameSources.Add(ToViewModel(source));
         await LoadGameSavesAsync();
         UpdateNavigationState();
     }
 
     private async Task LoadGameSavesAsync()
     {
-        var configurations = GameSources.Select(source => source.ToConfiguration()).ToList();
+        var configurations = GameSources.Select(ToConfiguration).ToList();
         var saves = await Task.Run(() => gameSaveCatalog.FindSaveGamesAsync(
             configurations,
             CancellationToken.None));
         GameSaves.Clear();
         foreach (var save in saves)
-            GameSaves.Add(new GameSaveRowViewModel(save));
+            GameSaves.Add(ToViewModel(save));
         UpdateNavigationState();
     }
+
+    private static GameSourceRowViewModel ToViewModel(GameSourceConfiguration source) =>
+        new(
+            source.Game.ToString(),
+            source.Game == GameType.Ats ? "ATS" : "ETS2",
+            source.Game == GameType.Ats ? "ats-" : "ets2-",
+            source.Enabled,
+            source.InstallPath,
+            source.ProfilePath,
+            source.SavePath,
+            source.EffectiveSavePaths);
+
+    private static GameSaveRowViewModel ToViewModel(SaveGame save) =>
+        new(
+            save.Game.ToString(),
+            save.ProfileName,
+            save.SaveName,
+            save.SaveDirectory,
+            save.SourceKey,
+            save.SaveRootPath);
+
+    private static GameSourceConfiguration ToConfiguration(GameSourceRowViewModel source) =>
+        new(
+            ParseGameType(source.GameKey),
+            source.Enabled,
+            string.IsNullOrWhiteSpace(source.InstallPath) ? null : source.InstallPath,
+            string.IsNullOrWhiteSpace(source.ProfilePath) ? null : source.ProfilePath,
+            string.IsNullOrWhiteSpace(source.SavePath) ? null : source.SavePath,
+            source.SavePaths);
+
+    private static GameSourceConfiguration ToConfiguration(GameSourceWizardGameViewModel game)
+    {
+        var savePaths = game.SaveRootCandidates
+            .Where(candidate => candidate.IsSelected)
+            .Select(candidate => candidate.Path)
+            .ToList();
+        return new(
+            ParseGameType(game.GameKey),
+            game.HasGame,
+            game.InstallCandidates.FirstOrDefault(candidate => candidate.IsSelected)?.Path,
+            game.DeriveProfilePath(),
+            savePaths.FirstOrDefault(),
+            savePaths);
+    }
+
+    private static GameType ParseGameType(string gameKey) =>
+        Enum.Parse<GameType>(gameKey, ignoreCase: true);
 
     private static void AddCollection(
         ExplorerNodeViewModel companyNode,
@@ -692,214 +753,5 @@ public sealed partial class MainWindowViewModel(
             .Where(company => sourcePrefixes.Any(prefix => company.Id.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)))
             .OrderBy(company => company.DisplayName, StringComparer.CurrentCultureIgnoreCase)
             .ToList();
-    }
-}
-
-internal sealed record ExplorerMatch(
-    ExplorerNodeViewModel Node,
-    IReadOnlyList<ExplorerNodeViewModel> Ancestors);
-
-public sealed partial class GameSourceRowViewModel : ObservableObject
-{
-    private readonly GameType _game;
-    private readonly IReadOnlyList<string> _savePaths;
-
-    public GameSourceRowViewModel(GameSourceConfiguration source)
-    {
-        _game = source.Game;
-        _savePaths = source.EffectiveSavePaths;
-        Game = source.Game;
-        GameName = source.Game == GameType.Ats ? "ATS" : "ETS2";
-        SourcePrefix = source.Game == GameType.Ats ? "ats-" : "ets2-";
-        Enabled = source.Enabled;
-        InstallPath = source.InstallPath ?? string.Empty;
-        ProfilePath = source.ProfilePath ?? string.Empty;
-        SavePath = source.SavePath ?? string.Empty;
-        SaveLocationsText = source.EffectiveSavePaths.Count == 0
-            ? "No save locations selected"
-            : $"{source.EffectiveSavePaths.Count:N0} save location(s) selected";
-        SourceStatusText = source.Enabled ? "Included" : "Not included";
-    }
-
-    public string GameName { get; }
-
-    public GameType Game { get; }
-
-    public string SourcePrefix { get; }
-
-    public string SaveLocationsText { get; }
-
-    public string SourceStatusText { get; }
-
-    [ObservableProperty]
-    private bool enabled;
-
-    [ObservableProperty]
-    private string installPath = string.Empty;
-
-    [ObservableProperty]
-    private string profilePath = string.Empty;
-
-    [ObservableProperty]
-    private string savePath = string.Empty;
-
-    public GameSourceConfiguration ToConfiguration() =>
-        new(
-            _game,
-            Enabled,
-            string.IsNullOrWhiteSpace(InstallPath) ? null : InstallPath,
-            string.IsNullOrWhiteSpace(ProfilePath) ? null : ProfilePath,
-            string.IsNullOrWhiteSpace(SavePath) ? null : SavePath,
-            _savePaths);
-}
-
-public sealed partial class GameSourceWizardGameViewModel : ObservableObject
-{
-    public GameSourceWizardGameViewModel(GameSourceCandidates candidates, GameSourceRowViewModel? existing)
-    {
-        Game = candidates.Game;
-        GameName = candidates.Game == GameType.Ats ? "ATS" : "ETS2";
-        FullGameName = candidates.Game == GameType.Ats ? "American Truck Simulator" : "Euro Truck Simulator 2";
-        InstallCandidates = new ObservableCollection<GameSourceWizardInstallCandidateViewModel>(
-            candidates.InstallCandidates.Select(candidate => new GameSourceWizardInstallCandidateViewModel(candidate)));
-        SaveRootCandidates = new ObservableCollection<GameSourceWizardSaveRootCandidateViewModel>(
-            candidates.SaveRootCandidates.Select(candidate => new GameSourceWizardSaveRootCandidateViewModel(candidate)));
-
-        var selectedInstall = InstallCandidates.FirstOrDefault(candidate =>
-            !string.IsNullOrWhiteSpace(existing?.InstallPath) &&
-            string.Equals(candidate.Path, existing.InstallPath, StringComparison.OrdinalIgnoreCase)) ??
-            InstallCandidates.FirstOrDefault(candidate => candidate.IsValid) ??
-            InstallCandidates.FirstOrDefault();
-        if (selectedInstall is not null)
-            selectedInstall.IsSelected = true;
-
-        foreach (var saveRoot in SaveRootCandidates)
-        {
-            saveRoot.IsSelected =
-                (!string.IsNullOrWhiteSpace(existing?.SavePath) &&
-                 string.Equals(saveRoot.Path, existing.SavePath, StringComparison.OrdinalIgnoreCase)) ||
-                saveRoot.IsValid;
-        }
-
-        HasGame = existing?.Enabled ?? SaveRootCandidates.Any(candidate => candidate.IsValid);
-    }
-
-    public GameType Game { get; }
-
-    public string GameName { get; }
-
-    public string FullGameName { get; }
-
-    [ObservableProperty]
-    private bool hasGame;
-
-    public ObservableCollection<GameSourceWizardInstallCandidateViewModel> InstallCandidates { get; }
-
-    public ObservableCollection<GameSourceWizardSaveRootCandidateViewModel> SaveRootCandidates { get; }
-
-    public GameSourceConfiguration ToConfiguration()
-    {
-        var savePaths = SaveRootCandidates
-            .Where(candidate => candidate.IsSelected)
-            .Select(candidate => candidate.Path)
-            .ToList();
-        var installPath = InstallCandidates.FirstOrDefault(candidate => candidate.IsSelected)?.Path;
-        var profilePath = DeriveProfilePath(savePaths.FirstOrDefault());
-        return new GameSourceConfiguration(
-            Game,
-            HasGame,
-            installPath,
-            profilePath,
-            savePaths.FirstOrDefault(),
-            savePaths);
-    }
-
-    private static string? DeriveProfilePath(string? savePath)
-    {
-        if (string.IsNullOrWhiteSpace(savePath))
-            return null;
-
-        var name = Path.GetFileName(savePath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
-        if (string.Equals(name, "profiles", StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(name, "steam_profiles", StringComparison.OrdinalIgnoreCase))
-        {
-            return Path.GetDirectoryName(savePath);
-        }
-
-        return savePath;
-    }
-}
-
-public sealed partial class GameSourceWizardInstallCandidateViewModel(GameInstallCandidate candidate) : ObservableObject
-{
-    public string Path { get; } = candidate.Path;
-
-    public bool IsValid { get; } = candidate.IsValid;
-
-    public string ProofText { get; } = string.Join("; ", candidate.Proofs);
-
-    [ObservableProperty]
-    private bool isSelected;
-}
-
-public sealed partial class GameSourceWizardSaveRootCandidateViewModel(GameSaveRootCandidate candidate) : ObservableObject
-{
-    public string Path { get; } = candidate.Path;
-
-    public bool IsValid { get; } = candidate.IsValid;
-
-    public int SaveFileCount { get; } = candidate.SaveFileCount;
-
-    public string ProofText { get; } = string.Join("; ", candidate.Proofs);
-
-    [ObservableProperty]
-    private bool isSelected;
-}
-
-public sealed class GameSaveRowViewModel
-{
-    public GameSaveRowViewModel(SaveGame save)
-    {
-        Game = save.Game;
-        ProfileName = save.ProfileName;
-        SaveName = save.SaveName;
-        SaveDirectory = save.SaveDirectory;
-        SourceKey = save.SourceKey;
-        SaveRootPath = save.SaveRootPath ?? string.Empty;
-    }
-
-    public GameType Game { get; }
-
-    public string ProfileName { get; }
-
-    public string SaveName { get; }
-
-    public string SaveDirectory { get; }
-
-    public string SourceKey { get; }
-
-    public string SaveRootPath { get; }
-}
-
-public sealed class CompaniesDetailViewModel : EntityDetailViewModel
-{
-    public CompaniesDetailViewModel(IReadOnlyList<CompanyDto> companies)
-        : base("Companies", "All trucking companies", RowFormatting.Money(companies.Sum(company => company.Profit), companies.FirstOrDefault()?.CurrencySymbol ?? "$"))
-    {
-        Metrics.Add(new("Companies", RowFormatting.Count(companies.Count)));
-        Metrics.Add(new("Profit", RowFormatting.Money(companies.Sum(company => company.Profit), companies.FirstOrDefault()?.CurrencySymbol ?? "$")));
-        Metrics.Add(new("Drivers", RowFormatting.Count(companies.Sum(company => company.Drivers.Count))));
-        Metrics.Add(new("Trucks", RowFormatting.Count(companies.Sum(company => company.Trucks.Count))));
-        Tabs.Add(new("Companies", companies.Select(company => new GridRowViewModel(
-            company.DisplayName,
-            RowFormatting.Money(company.Profit, company.CurrencySymbol),
-            $"{company.Garages.Count:N0} garages / {company.Drivers.Count:N0} drivers / {company.Trucks.Count:N0} trucks",
-            $"{company.Missions.Count:N0} jobs",
-            RowFormatting.Trend(company.ProfitTrend),
-            company)
-        {
-            Target = new(ExplorerNodeKind.Company, company.Id),
-            ProfitSort = company.Profit
-        }), TableColumns.Companies));
     }
 }

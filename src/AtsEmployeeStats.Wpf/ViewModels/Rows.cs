@@ -12,7 +12,7 @@ public sealed record TableColumnViewModel(
     double Width = 1,
     bool IsTrend = false);
 
-public sealed record RowNavigationTarget(ExplorerNodeKind Kind, string CompanyId, string? EntityId = null);
+public sealed record RowNavigationTargetViewModel(ExplorerNodeKind Kind, string CompanyId, string? EntityId = null);
 
 public sealed record GridRowViewModel(
     string Name,
@@ -22,7 +22,7 @@ public sealed record GridRowViewModel(
     IReadOnlyList<double> Trend,
     object? Source = null)
 {
-    public RowNavigationTarget? Target { get; init; }
+    public RowNavigationTargetViewModel? Target { get; init; }
 
     public long ProfitSort { get; init; }
 

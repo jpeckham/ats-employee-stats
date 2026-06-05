@@ -38,10 +38,14 @@ public sealed class ArchitectureDependencyTests
         Types().That().ResideInAssembly(typeof(App).Assembly).As("WPF delivery layer");
 
     private static readonly IObjectProvider<IType> WpfViewModels =
-        Types().That().ResideInNamespace("AtsEmployeeStats.Wpf.ViewModels").As("WPF view models");
+        Types().That().ResideInNamespace("AtsEmployeeStats.Wpf.ViewModels")
+            .And().HaveNameEndingWith("ViewModel").As("WPF view models");
 
     private static readonly IObjectProvider<IType> WpfViews =
         Types().That().ResideInNamespace("AtsEmployeeStats.Wpf.Controls").As("WPF views");
+
+    private static readonly IObjectProvider<IType> WpfControllers =
+        Types().That().ResideInNamespace("AtsEmployeeStats.Wpf.Controllers").As("WPF controllers");
 
     [Fact]
     public void Domain_has_no_outward_dependencies()
@@ -93,9 +97,19 @@ public sealed class ArchitectureDependencyTests
     [Fact]
     public void View_model_types_use_view_model_suffix()
     {
-        Check(Classes().That().Are(WpfViewModels).Should()
+        Check(Classes().That().ResideInNamespace("AtsEmployeeStats.Wpf.ViewModels")
+            .And().ArePublic().Should()
             .HaveNameEndingWith("ViewModel")
-            .Because("presentation output models should be recognizable by name"));
+            .Because("public presentation output models should be recognizable by name"));
+    }
+
+    [Fact]
+    public void Wpf_controller_types_use_controller_or_presenter_suffix()
+    {
+        Check(Classes().That().Are(WpfControllers).Should()
+            .HaveNameEndingWith("Controller")
+            .OrShould().HaveNameEndingWith("Presenter")
+            .Because("behavioral WPF adapters should be named by their Clean Architecture role"));
     }
 
     [Fact]
