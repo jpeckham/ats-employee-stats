@@ -1,5 +1,4 @@
 using System.Collections.ObjectModel;
-using System.IO;
 using AtsEmployeeStats.Contracts;
 using CommunityToolkit.Mvvm.ComponentModel;
 
@@ -107,22 +106,6 @@ public sealed partial class GameSourceWizardGameViewModel : ObservableObject
     public ObservableCollection<GameSourceWizardInstallCandidateViewModel> InstallCandidates { get; }
 
     public ObservableCollection<GameSourceWizardSaveRootCandidateViewModel> SaveRootCandidates { get; }
-
-    public string? DeriveProfilePath()
-    {
-        var savePath = SaveRootCandidates.FirstOrDefault(candidate => candidate.IsSelected)?.Path;
-        if (string.IsNullOrWhiteSpace(savePath))
-            return null;
-
-        var name = Path.GetFileName(savePath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
-        if (string.Equals(name, "profiles", StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(name, "steam_profiles", StringComparison.OrdinalIgnoreCase))
-        {
-            return Path.GetDirectoryName(savePath);
-        }
-
-        return savePath;
-    }
 }
 
 public sealed partial class GameSourceWizardInstallCandidateViewModel(

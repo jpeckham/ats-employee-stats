@@ -36,6 +36,7 @@ public partial class App : System.Windows.Application
         services.AddSingleton<GameSourceManagementUseCase>();
         services.AddSingleton<IConfiguredGameSaveDiscovery, LocalConfiguredGameSaveDiscovery>();
         services.AddSingleton<GameSaveCatalogUseCase>();
+        services.AddSingleton<GameSourcePresenter>();
         services.AddSingleton<ISaveSnapshotSource>(sp =>
         {
             var dataDirectory = Path.Combine(

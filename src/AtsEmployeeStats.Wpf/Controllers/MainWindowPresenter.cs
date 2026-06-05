@@ -1,5 +1,4 @@
 using System.Collections.ObjectModel;
-using System.IO;
 using AtsEmployeeStats.Application.Saves;
 using AtsEmployeeStats.Application.Statistics.Queries;
 using AtsEmployeeStats.Contracts;
@@ -10,17 +9,41 @@ using static AtsEmployeeStats.Wpf.ViewModels.DetailHelpers;
 
 namespace AtsEmployeeStats.Wpf.Controllers;
 
-public sealed partial class MainWindowPresenter(
-    IStatisticsDashboardUseCases dashboardUseCases,
-    IStatisticsReloadUseCase reloadUseCase,
-    GameSourceManagementUseCase gameSourceManagement,
-    GameSaveCatalogUseCase gameSaveCatalog) : ObservableObject
+public sealed partial class MainWindowPresenter : ObservableObject
 {
     private readonly ExplorerPresenter _explorerPresenter = new();
+    private readonly IStatisticsDashboardUseCases dashboardUseCases;
+    private readonly IStatisticsReloadUseCase reloadUseCase;
+    private readonly GameSourcePresenter _gameSourcePresenter;
     private DashboardQueryRequest _query = new();
     private DashboardStatisticsDto? _dashboard;
     private ExplorerNodeViewModel? _selectedNode;
     private string? _activeTabTitle;
+
+    public MainWindowPresenter(
+        IStatisticsDashboardUseCases dashboardUseCases,
+        IStatisticsReloadUseCase reloadUseCase,
+        GameSourcePresenter gameSourcePresenter)
+    {
+        this.dashboardUseCases = dashboardUseCases;
+        this.reloadUseCase = reloadUseCase;
+        _gameSourcePresenter = gameSourcePresenter;
+        _gameSourcePresenter.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName is nameof(IsSourceWizardVisible) or
+                nameof(CurrentWizardIndex) or
+                nameof(CurrentWizardGame) or
+                nameof(SourceWizardStepText))
+            {
+                OnPropertyChanged(e.PropertyName);
+            }
+
+            if (e.PropertyName is nameof(IsSourceWizardVisible))
+                UpdateNavigationState();
+        };
+        _gameSourcePresenter.GameSources.CollectionChanged += (_, _) => UpdateNavigationState();
+        _gameSourcePresenter.GameSaves.CollectionChanged += (_, _) => UpdateNavigationState();
+    }
 
     [ObservableProperty]
     private CompanyExplorerViewModel explorer = new();
@@ -33,9 +56,6 @@ public sealed partial class MainWindowPresenter(
 
     [ObservableProperty]
     private bool isBusy;
-
-    [ObservableProperty]
-    private bool isSourceWizardVisible;
 
     [ObservableProperty]
     private bool isEmptyStateVisible = true;
@@ -61,26 +81,26 @@ public sealed partial class MainWindowPresenter(
     [ObservableProperty]
     private string saveContentProgressText = string.Empty;
 
-    [ObservableProperty]
-    private int currentWizardIndex;
+    public bool IsSourceWizardVisible => _gameSourcePresenter.IsSourceWizardVisible;
 
-    [ObservableProperty]
-    private GameSourceWizardGameViewModel? currentWizardGame;
+    public int CurrentWizardIndex => _gameSourcePresenter.CurrentWizardIndex;
 
-    public ObservableCollection<GameSourceRowViewModel> GameSources { get; } = [];
+    public GameSourceWizardGameViewModel? CurrentWizardGame => _gameSourcePresenter.CurrentWizardGame;
 
-    public ObservableCollection<GameSaveRowViewModel> GameSaves { get; } = [];
+    public ObservableCollection<GameSourceRowViewModel> GameSources => _gameSourcePresenter.GameSources;
 
-    public ObservableCollection<GameSourceWizardGameViewModel> SourceWizardGames { get; } = [];
+    public ObservableCollection<GameSaveRowViewModel> GameSaves => _gameSourcePresenter.GameSaves;
+
+    public ObservableCollection<GameSourceWizardGameViewModel> SourceWizardGames => _gameSourcePresenter.SourceWizardGames;
 
     public bool CanReloadSaves =>
-        !IsBusy && GameSources.Any(source => source.Enabled && source.SavePath.Length > 0);
+        !IsBusy && _gameSourcePresenter.CanReloadSaves;
 
     public bool CanRefreshDashboard =>
         !IsBusy && _dashboard is not null;
 
     public string SourceWizardStepText =>
-        SourceWizardGames.Count == 0 ? string.Empty : $"Step {CurrentWizardIndex + 1:N0} of {SourceWizardGames.Count:N0}";
+        _gameSourcePresenter.SourceWizardStepText;
 
     partial void OnIsBusyChanged(bool value)
     {
@@ -100,8 +120,8 @@ public sealed partial class MainWindowPresenter(
     public async Task LoadAsync()
     {
         await Task.Yield();
-        await LoadGameSourcesAsync();
-        if (await Task.Run(() => gameSourceManagement.RequiresWizardAsync(CancellationToken.None)))
+        await _gameSourcePresenter.LoadGameSourcesAsync();
+        if (await _gameSourcePresenter.RequiresWizardAsync())
         {
             IsEmptyStateVisible = true;
             IsExplorerVisible = false;
@@ -155,43 +175,9 @@ public sealed partial class MainWindowPresenter(
         {
             IsBusy = true;
             StatusText = "Searching for ATS and ETS2 sources...";
-            var wizardGames = await Task.Run(async () =>
-            {
-                var rows = GameSources.ToList();
-                var games = new List<GameSourceWizardGameViewModel>();
-                foreach (var game in new[] { GameType.Ats, GameType.Ets2 })
-                {
-                    var candidates = await gameSourceManagement.DiscoverCandidatesAsync(game, CancellationToken.None);
-                    var existing = rows.FirstOrDefault(source => string.Equals(source.GameKey, game.ToString(), StringComparison.OrdinalIgnoreCase));
-                    games.Add(new GameSourceWizardGameViewModel(
-                        game.ToString(),
-                        game == GameType.Ats ? "ATS" : "ETS2",
-                        game == GameType.Ats ? "American Truck Simulator" : "Euro Truck Simulator 2",
-                        candidates.InstallCandidates.Select(candidate => new GameSourceWizardInstallCandidateViewModel(
-                            candidate.Path,
-                            candidate.IsValid,
-                            candidate.Proofs)),
-                        candidates.SaveRootCandidates.Select(candidate => new GameSourceWizardSaveRootCandidateViewModel(
-                            candidate.Path,
-                            candidate.IsValid,
-                            candidate.SaveFileCount,
-                            candidate.Proofs)),
-                        existing));
-                }
-
-                return games;
-            });
-
-            SourceWizardGames.Clear();
-            foreach (var wizardGame in wizardGames)
-                SourceWizardGames.Add(wizardGame);
-
-            CurrentWizardIndex = 0;
-            CurrentWizardGame = SourceWizardGames.FirstOrDefault();
-            IsSourceWizardVisible = true;
+            var result = await _gameSourcePresenter.StartSourceWizardAsync();
             IsEmptyStateVisible = false;
-            StatusText = "Review game sources before importing saves.";
-            OnPropertyChanged(nameof(SourceWizardStepText));
+            StatusText = result.StatusText;
         }
         catch (Exception ex)
         {
@@ -206,23 +192,13 @@ public sealed partial class MainWindowPresenter(
     [RelayCommand]
     private void PreviousSourceWizardStep()
     {
-        if (CurrentWizardIndex <= 0)
-            return;
-
-        CurrentWizardIndex--;
-        CurrentWizardGame = SourceWizardGames[CurrentWizardIndex];
-        OnPropertyChanged(nameof(SourceWizardStepText));
+        _gameSourcePresenter.PreviousSourceWizardStep();
     }
 
     [RelayCommand]
     private void NextSourceWizardStep()
     {
-        if (CurrentWizardIndex >= SourceWizardGames.Count - 1)
-            return;
-
-        CurrentWizardIndex++;
-        CurrentWizardGame = SourceWizardGames[CurrentWizardIndex];
-        OnPropertyChanged(nameof(SourceWizardStepText));
+        _gameSourcePresenter.NextSourceWizardStep();
     }
 
     [RelayCommand]
@@ -234,21 +210,15 @@ public sealed partial class MainWindowPresenter(
         try
         {
             IsBusy = true;
-            var configurations = SourceWizardGames.Select(ToConfiguration).ToList();
-            var result = await Task.Run(() => gameSourceManagement.SaveValidatedAsync(
-                configurations,
-                CancellationToken.None));
-            if (!result.Saved)
+            var result = await _gameSourcePresenter.FinishSourceWizardAsync();
+            if (!result.Succeeded)
             {
-                StatusText = string.Join(" ", result.Errors);
+                StatusText = result.StatusText;
                 return;
             }
 
-            IsSourceWizardVisible = false;
-            await LoadGameSourcesAsync();
-            await LoadGameSavesAsync();
             UpdateNavigationState();
-            StatusText = "Source setup saved. Reload saves to import enabled sources.";
+            StatusText = result.StatusText;
         }
         catch (Exception ex)
         {
@@ -361,76 +331,6 @@ public sealed partial class MainWindowPresenter(
         _explorerPresenter.BuildExplorer(companies, GameSources, GameSaves);
         Explorer = _explorerPresenter.Explorer;
     }
-
-
-    private async Task LoadGameSourcesAsync()
-    {
-        var sources = await Task.Run(() => gameSourceManagement.DiscoverAsync(CancellationToken.None));
-        GameSources.Clear();
-        foreach (var source in sources)
-            GameSources.Add(ToViewModel(source));
-        await LoadGameSavesAsync();
-        UpdateNavigationState();
-    }
-
-    private async Task LoadGameSavesAsync()
-    {
-        var configurations = GameSources.Select(ToConfiguration).ToList();
-        var saves = await Task.Run(() => gameSaveCatalog.FindSaveGamesAsync(
-            configurations,
-            CancellationToken.None));
-        GameSaves.Clear();
-        foreach (var save in saves)
-            GameSaves.Add(ToViewModel(save));
-        UpdateNavigationState();
-    }
-
-    private static GameSourceRowViewModel ToViewModel(GameSourceConfiguration source) =>
-        new(
-            source.Game.ToString(),
-            source.Game == GameType.Ats ? "ATS" : "ETS2",
-            source.Game == GameType.Ats ? "ats-" : "ets2-",
-            source.Enabled,
-            source.InstallPath,
-            source.ProfilePath,
-            source.SavePath,
-            source.EffectiveSavePaths);
-
-    private static GameSaveRowViewModel ToViewModel(SaveGame save) =>
-        new(
-            save.Game.ToString(),
-            save.ProfileName,
-            save.SaveName,
-            save.SaveDirectory,
-            save.SourceKey,
-            save.SaveRootPath);
-
-    private static GameSourceConfiguration ToConfiguration(GameSourceRowViewModel source) =>
-        new(
-            ParseGameType(source.GameKey),
-            source.Enabled,
-            string.IsNullOrWhiteSpace(source.InstallPath) ? null : source.InstallPath,
-            string.IsNullOrWhiteSpace(source.ProfilePath) ? null : source.ProfilePath,
-            string.IsNullOrWhiteSpace(source.SavePath) ? null : source.SavePath,
-            source.SavePaths);
-
-    private static GameSourceConfiguration ToConfiguration(GameSourceWizardGameViewModel game)
-    {
-        var savePaths = game.SaveRootCandidates
-            .Where(candidate => candidate.IsSelected)
-            .Select(candidate => candidate.Path)
-            .ToList();
-        return new(
-            ParseGameType(game.GameKey),
-            game.HasGame,
-            game.InstallCandidates.FirstOrDefault(candidate => candidate.IsSelected)?.Path,
-            game.DeriveProfilePath(),
-            savePaths.FirstOrDefault(),
-            savePaths);
-    }
-
-    private static GameType ParseGameType(string gameKey) =>
-        Enum.Parse<GameType>(gameKey, ignoreCase: true);
 
     private void ResetLoadProgress()
     {
