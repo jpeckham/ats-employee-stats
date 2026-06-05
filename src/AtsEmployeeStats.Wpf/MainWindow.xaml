@@ -268,7 +268,7 @@
                         <TextBlock Text="{Binding SaveFileProgressText}"
                                    FontWeight="SemiBold"
                                    Foreground="#111827" />
-                        <ProgressBar Value="{Binding SaveFileProgressValue}"
+                        <ProgressBar Value="{Binding SaveFileProgressValue, Mode=OneWay}"
                                      Minimum="0"
                                      Maximum="100"
                                      Height="14"
@@ -276,7 +276,7 @@
                         <TextBlock Text="{Binding SaveContentProgressText}"
                                    Foreground="#64748B"
                                    FontSize="12" />
-                        <ProgressBar Value="{Binding SaveContentProgressValue}"
+                        <ProgressBar Value="{Binding SaveContentProgressValue, Mode=OneWay}"
                                      Minimum="0"
                                      Maximum="100"
                                      Height="10"

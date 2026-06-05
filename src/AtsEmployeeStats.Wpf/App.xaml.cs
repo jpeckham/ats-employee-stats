@@ -4,7 +4,8 @@ using AtsEmployeeStats.Application.Saves;
 using AtsEmployeeStats.Application.Statistics;
 using AtsEmployeeStats.Application.Statistics.Queries;
 using AtsEmployeeStats.Infrastructure.Saves;
-using AtsEmployeeStats.Wpf.ViewModels;
+using AtsEmployeeStats.Wpf.Controllers;
+using AtsEmployeeStats.Wpf.Threading;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace AtsEmployeeStats.Wpf;
@@ -36,6 +37,8 @@ public partial class App : System.Windows.Application
         services.AddSingleton<GameSourceManagementUseCase>();
         services.AddSingleton<IConfiguredGameSaveDiscovery, LocalConfiguredGameSaveDiscovery>();
         services.AddSingleton<GameSaveCatalogUseCase>();
+        services.AddSingleton<IBackgroundRunner, TaskBackgroundRunner>();
+        services.AddSingleton<GameSourcePresenter>();
         services.AddSingleton<ISaveSnapshotSource>(sp =>
         {
             var dataDirectory = Path.Combine(
@@ -71,7 +74,9 @@ public partial class App : System.Windows.Application
         services.AddSingleton<IRecommendTrailersForGarageUseCase, RecommendTrailersForGarageUseCase>();
         services.AddSingleton<IRecommendDriverSkillsUseCase, RecommendDriverSkillsUseCase>();
         services.AddSingleton<IDiagnoseUnderperformersUseCase, DiagnoseUnderperformersUseCase>();
-        services.AddSingleton<MainWindowViewModel>();
+        services.AddSingleton<ExplorerPresenter>();
+        services.AddSingleton<DashboardPresenter>();
+        services.AddSingleton<MainWindowPresenter>();
         services.AddSingleton<MainWindow>();
         return services;
     }
