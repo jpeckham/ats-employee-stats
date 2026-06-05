@@ -364,6 +364,7 @@ public sealed class SqliteMedallionSaveSnapshotSource(
 
             create table if not exists bronze_reference_archives (
                 archive_id text primary key,
+                source_key text,
                 full_path text not null,
                 content_hash text not null,
                 extracted_time_utc text not null,
@@ -373,6 +374,7 @@ public sealed class SqliteMedallionSaveSnapshotSource(
 
             create table if not exists bronze_reference_sii_units (
                 archive_id text not null,
+                source_key text,
                 relative_path text not null,
                 unit_ordinal integer not null,
                 unit_type text not null,
@@ -671,6 +673,8 @@ public sealed class SqliteMedallionSaveSnapshotSource(
             """;
         await command.ExecuteNonQueryAsync(cancellationToken);
         await EnsureColumnAsync(connection, "bronze_save_files", "source_key", "text", cancellationToken);
+        await EnsureColumnAsync(connection, "bronze_reference_archives", "source_key", "text", cancellationToken);
+        await EnsureColumnAsync(connection, "bronze_reference_sii_units", "source_key", "text", cancellationToken);
         await EnsureColumnAsync(connection, "silver_drivers", "is_player", "integer not null default 0", cancellationToken);
         await EnsureColumnAsync(connection, "silver_trucks", "license_plate", "text", cancellationToken);
         await EnsureColumnAsync(connection, "silver_trucks", "model_name", "text", cancellationToken);
@@ -1089,7 +1093,8 @@ public sealed class SqliteMedallionSaveSnapshotSource(
             return;
         }
 
-        var existingCount = await CountReferenceUnitsAsync(connection, extracted.ArchiveHash, cancellationToken);
+        var archiveId = ReferenceArchiveId(extracted.ArchiveHash);
+        var existingCount = await CountReferenceUnitsAsync(connection, archiveId, cancellationToken);
         if (existingCount > 0)
         {
             return;
@@ -1100,12 +1105,13 @@ public sealed class SqliteMedallionSaveSnapshotSource(
             connection,
             """
             insert or replace into bronze_reference_archives (
-                archive_id, full_path, content_hash, extracted_time_utc, status, error_message
+                archive_id, source_key, full_path, content_hash, extracted_time_utc, status, error_message
             )
-            values ($archive_id, $full_path, $content_hash, $extracted_time_utc, $status, $error_message)
+            values ($archive_id, $source_key, $full_path, $content_hash, $extracted_time_utc, $status, $error_message)
             """,
             cancellationToken,
-            ("$archive_id", extracted.ArchiveHash),
+            ("$archive_id", archiveId),
+            ("$source_key", sourceKeyPrefix),
             ("$full_path", extracted.ArchivePath),
             ("$content_hash", extracted.ArchiveHash),
             ("$extracted_time_utc", FormatUtc(DateTime.UtcNow)),
@@ -1115,7 +1121,7 @@ public sealed class SqliteMedallionSaveSnapshotSource(
             connection,
             "delete from bronze_reference_sii_units where archive_id = $archive_id",
             cancellationToken,
-            ("$archive_id", extracted.ArchiveHash));
+            ("$archive_id", archiveId));
 
         // Standalone SII files: normalize brace style then parse (locale files may have
         // the opening { on its own line; append-syntax key[]: is also supported)
@@ -1126,7 +1132,7 @@ public sealed class SqliteMedallionSaveSnapshotSource(
                 var relativePath = ToRelativeForwardSlash(extracted.OutputDirectory, path);
                 var raw = await File.ReadAllTextAsync(path, cancellationToken);
                 var document = SiiSaveParser.Parse(SiiSaveParser.NormalizeSeparateBrace(raw));
-                await InsertReferenceUnitsAsync(connection, extracted.ArchiveHash, relativePath, document, cancellationToken);
+                await InsertReferenceUnitsAsync(connection, archiveId, sourceKeyPrefix, relativePath, document, cancellationToken);
             }
         }
 
@@ -1139,7 +1145,7 @@ public sealed class SqliteMedallionSaveSnapshotSource(
                 var raw = await File.ReadAllTextAsync(path, cancellationToken);
                 var wrapped = $"SiiNunit\n{{\nlocalization_db : .locale_fragment {{\n{raw}\n}}\n}}";
                 var document = SiiSaveParser.Parse(wrapped);
-                await InsertReferenceUnitsAsync(connection, extracted.ArchiveHash, relativePath, document, cancellationToken);
+                await InsertReferenceUnitsAsync(connection, archiveId, sourceKeyPrefix, relativePath, document, cancellationToken);
             }
         }
 
@@ -1155,12 +1161,13 @@ public sealed class SqliteMedallionSaveSnapshotSource(
             connection,
             """
             insert or replace into bronze_reference_archives (
-                archive_id, full_path, content_hash, extracted_time_utc, status, error_message
+                archive_id, source_key, full_path, content_hash, extracted_time_utc, status, error_message
             )
-            values ($archive_id, $full_path, $content_hash, $extracted_time_utc, $status, $error_message)
+            values ($archive_id, $source_key, $full_path, $content_hash, $extracted_time_utc, $status, $error_message)
             """,
             cancellationToken,
-            ("$archive_id", "locale-scs-extraction-failed"),
+            ("$archive_id", ReferenceArchiveId("locale-scs-extraction-failed")),
+            ("$source_key", sourceKeyPrefix),
             ("$full_path", referenceDataOptions?.GameInstallRoot ?? string.Empty),
             ("$content_hash", string.Empty),
             ("$extracted_time_utc", FormatUtc(DateTime.UtcNow)),
@@ -1179,9 +1186,15 @@ public sealed class SqliteMedallionSaveSnapshotSource(
         return (long)(await command.ExecuteScalarAsync(cancellationToken) ?? 0L);
     }
 
+    private string ReferenceArchiveId(string contentHash) =>
+        string.IsNullOrWhiteSpace(sourceKeyPrefix)
+            ? contentHash
+            : $"{sourceKeyPrefix}:{contentHash}";
+
     private static async Task InsertReferenceUnitsAsync(
         SqliteConnection connection,
         string archiveId,
+        string? sourceKey,
         string relativePath,
         SiiDocument document,
         CancellationToken cancellationToken)
@@ -1190,6 +1203,7 @@ public sealed class SqliteMedallionSaveSnapshotSource(
         command.CommandText = """
             insert into bronze_reference_sii_units (
                 archive_id,
+                source_key,
                 relative_path,
                 unit_ordinal,
                 unit_type,
@@ -1199,6 +1213,7 @@ public sealed class SqliteMedallionSaveSnapshotSource(
             )
             values (
                 $archive_id,
+                $source_key,
                 $relative_path,
                 $unit_ordinal,
                 $unit_type,
@@ -1208,6 +1223,7 @@ public sealed class SqliteMedallionSaveSnapshotSource(
             )
             """;
         var archiveIdParameter = command.Parameters.Add("$archive_id", SqliteType.Text);
+        var sourceKeyParameter = command.Parameters.Add("$source_key", SqliteType.Text);
         var relativePathParameter = command.Parameters.Add("$relative_path", SqliteType.Text);
         var ordinalParameter = command.Parameters.Add("$unit_ordinal", SqliteType.Integer);
         var typeParameter = command.Parameters.Add("$unit_type", SqliteType.Text);
@@ -1220,6 +1236,7 @@ public sealed class SqliteMedallionSaveSnapshotSource(
         {
             var unit = document.Units[i];
             archiveIdParameter.Value = archiveId;
+            sourceKeyParameter.Value = sourceKey is null ? DBNull.Value : sourceKey;
             relativePathParameter.Value = relativePath;
             ordinalParameter.Value = i;
             typeParameter.Value = unit.Type;
@@ -1676,6 +1693,29 @@ public sealed class SqliteMedallionSaveSnapshotSource(
         SqliteConnection connection,
         CancellationToken cancellationToken)
     {
+        var sourceKeys = new List<string?>();
+        await using (var selectCmd = connection.CreateCommand())
+        {
+            selectCmd.CommandText = """
+                select distinct source_key
+                from bronze_reference_sii_units
+                where unit_type = 'driver_names'
+                order by source_key is not null desc, source_key
+                """;
+            await using var reader = await selectCmd.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+                sourceKeys.Add(GetNullableString(reader, 0));
+        }
+
+        foreach (var sourceKey in sourceKeys)
+            await ApplyReferenceDriverNamesForSourceAsync(connection, sourceKey, cancellationToken);
+    }
+
+    private static async Task ApplyReferenceDriverNamesForSourceAsync(
+        SqliteConnection connection,
+        string? sourceKey,
+        CancellationToken cancellationToken)
+    {
         // driver_names.sii stores names as name[N] where N is the numeric suffix of driver.N.
         // Unit type is 'driver_names', not 'localization_db', so LoadLocaleAsync won't find it.
         var namesByIndex = new Dictionary<int, string>();
@@ -1685,8 +1725,13 @@ public sealed class SqliteMedallionSaveSnapshotSource(
                 select array_values_json
                 from bronze_reference_sii_units
                 where unit_type = 'driver_names'
+                  and (
+                    ($source_key is null and source_key is null)
+                    or source_key = $source_key
+                  )
                 limit 1
                 """;
+            Add(selectCmd, "$source_key", sourceKey);
             await using var reader = await selectCmd.ExecuteReaderAsync(cancellationToken);
             if (await reader.ReadAsync(cancellationToken))
             {
@@ -1711,7 +1756,16 @@ public sealed class SqliteMedallionSaveSnapshotSource(
         List<string> driverIds;
         await using (var selectCmd = connection.CreateCommand())
         {
-            selectCmd.CommandText = "select distinct driver_id from silver_drivers where is_player = 0";
+            selectCmd.CommandText = """
+                select distinct driver_id
+                from silver_drivers
+                where is_player = 0
+                  and (
+                    $company_prefix is null
+                    or company_id like $company_prefix escape '\'
+                  )
+                """;
+            Add(selectCmd, "$company_prefix", CompanyPrefixLike(sourceKey));
             await using var reader = await selectCmd.ExecuteReaderAsync(cancellationToken);
             driverIds = [];
             while (await reader.ReadAsync(cancellationToken))
@@ -1719,9 +1773,22 @@ public sealed class SqliteMedallionSaveSnapshotSource(
         }
 
         await using var updateCmd = connection.CreateCommand();
-        updateCmd.CommandText = "update silver_drivers set display_name = $display_name where driver_id = $driver_id and is_player = 0";
+        updateCmd.CommandText = """
+            update silver_drivers
+            set display_name = $display_name
+            where driver_id = $driver_id
+              and is_player = 0
+              and (
+                $company_prefix is null
+                or company_id like $company_prefix escape '\'
+              )
+            """;
         var driverParam = updateCmd.Parameters.Add("$driver_id", Microsoft.Data.Sqlite.SqliteType.Text);
         var nameParam = updateCmd.Parameters.Add("$display_name", Microsoft.Data.Sqlite.SqliteType.Text);
+        var companyPrefixParam = updateCmd.Parameters.Add("$company_prefix", Microsoft.Data.Sqlite.SqliteType.Text);
+        companyPrefixParam.Value = CompanyPrefixLike(sourceKey) is { } companyPrefix
+            ? companyPrefix
+            : DBNull.Value;
 
         foreach (var driverId in driverIds)
         {
@@ -1732,6 +1799,29 @@ public sealed class SqliteMedallionSaveSnapshotSource(
             nameParam.Value = name;
             await updateCmd.ExecuteNonQueryAsync(cancellationToken);
         }
+    }
+
+    private static string EscapeLike(string value) =>
+        value
+            .Replace(@"\", @"\\", StringComparison.Ordinal)
+            .Replace("%", @"\%", StringComparison.Ordinal)
+            .Replace("_", @"\_", StringComparison.Ordinal);
+
+    private static string? CompanyPrefixLike(string? sourceKey) =>
+        string.IsNullOrWhiteSpace(sourceKey)
+            ? null
+            : EscapeLike(NormalizeSourceKey(sourceKey)) + ":%";
+
+    private static string NormalizeSourceKey(string sourceKey)
+    {
+        var normalized = new string(sourceKey
+            .Trim()
+            .ToLowerInvariant()
+            .Select(character => char.IsLetterOrDigit(character) ? character : '-')
+            .ToArray());
+
+        normalized = string.Join('-', normalized.Split('-', StringSplitOptions.RemoveEmptyEntries));
+        return normalized.Length == 0 ? "default" : normalized;
     }
 
     private static async Task ApplyReferenceCargoNamesAsync(

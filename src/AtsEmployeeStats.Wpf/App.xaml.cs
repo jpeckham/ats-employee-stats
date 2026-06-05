@@ -52,7 +52,7 @@ public partial class App : System.Windows.Application
                 createSource: source =>
                 {
                     var referenceDataOptions = new AtsReferenceDataOptions(
-                        Enabled: false,
+                        Enabled: true,
                         GameInstallRoot: source.InstallPath,
                         CacheRoot: Path.Combine(dataDirectory, "reference-cache", source.Game.ToString()));
                     var saveRoot = string.IsNullOrWhiteSpace(source.SavePath)

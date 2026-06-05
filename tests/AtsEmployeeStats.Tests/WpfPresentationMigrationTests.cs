@@ -129,6 +129,18 @@ public sealed class WpfPresentationMigrationTests
     }
 
     [Fact]
+    public void Wpf_configured_game_sources_enable_reference_data_for_fresh_rebuilds()
+    {
+        var root = FindRepositoryRoot();
+        var wpfRoot = Path.Combine(root, "src", "AtsEmployeeStats.Wpf");
+        var app = File.ReadAllText(Path.Combine(wpfRoot, "App.xaml.cs"));
+
+        Assert.Contains("new AtsReferenceDataOptions", app, StringComparison.Ordinal);
+        Assert.Contains("Enabled: true", app, StringComparison.Ordinal);
+        Assert.DoesNotContain("Enabled: false", app, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Wpf_explorer_expands_startup_path_to_visible_save_location_companies()
     {
         var root = FindRepositoryRoot();

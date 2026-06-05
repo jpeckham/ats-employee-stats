@@ -107,6 +107,49 @@ public sealed class ScsReferenceDataIngestionTests : IDisposable
     }
 
     [Fact]
+    public async Task StatisticsService_applies_reference_driver_names_per_configured_game_source()
+    {
+        var atsSaveRoot = Path.Combine(_root, "ats-saves");
+        var ets2SaveRoot = Path.Combine(_root, "ets2-saves");
+        await WriteDriverOnlySaveAsync(atsSaveRoot, "Desert Line");
+        await WriteDriverOnlySaveAsync(ets2SaveRoot, "Euro Line");
+        var atsGameRoot = await WriteGameRootAsync("ats-game", "ats locale archive");
+        var ets2GameRoot = await WriteGameRootAsync("ets2-game", "ets2 locale archive");
+        var extractor = new SourceSpecificArchiveExtractor(
+            new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                [Path.Combine(atsGameRoot, "locale.scs")] = "Alice Ramirez",
+                [Path.Combine(ets2GameRoot, "locale.scs")] = "Eva Novak"
+            });
+
+        var atsSource = new SqliteMedallionSaveSnapshotSource(
+            atsSaveRoot,
+            _dbPath,
+            referenceDataOptions: new AtsReferenceDataOptions(true, atsGameRoot, Path.Combine(_root, "reference-cache", "ats")),
+            scsExtractorDownloader: new ExistingExtractorDownloader(),
+            scsArchiveExtractor: extractor,
+            sourceKeyPrefix: "ats");
+        var ets2Source = new SqliteMedallionSaveSnapshotSource(
+            ets2SaveRoot,
+            _dbPath,
+            referenceDataOptions: new AtsReferenceDataOptions(true, ets2GameRoot, Path.Combine(_root, "reference-cache", "ets2")),
+            scsExtractorDownloader: new ExistingExtractorDownloader(),
+            scsArchiveExtractor: extractor,
+            sourceKeyPrefix: "ets2");
+
+        await new StatisticsService(atsSource).IngestAsync(CancellationToken.None);
+        await new StatisticsService(ets2Source).IngestAsync(CancellationToken.None);
+        var statistics = await new StatisticsService(ets2Source).LoadAsync(CancellationToken.None);
+
+        Assert.Equal(
+            "Alice Ramirez",
+            Assert.Single(statistics.Companies, company => company.Id == "ats:desert-line").Drivers.Single().DisplayName);
+        Assert.Equal(
+            "Eva Novak",
+            Assert.Single(statistics.Companies, company => company.Id == "ets2:euro-line").Drivers.Single().DisplayName);
+    }
+
+    [Fact]
     public async Task StatisticsService_continues_when_locale_extractor_cannot_extract_archive()
     {
         var saveRoot = await WriteSaveAsync();
@@ -160,13 +203,19 @@ public sealed class ScsReferenceDataIngestionTests : IDisposable
 
     private async Task<string> WriteDriverOnlySaveAsync()
     {
-        var saveDirectory = Path.Combine(_root, "profiles", "506C61796572", "save", "autosave");
+        await WriteDriverOnlySaveAsync(_root, "Desert Line");
+        return _root;
+    }
+
+    private static async Task WriteDriverOnlySaveAsync(string root, string companyName)
+    {
+        var saveDirectory = Path.Combine(root, "profiles", "506C61796572", "save", "autosave");
         Directory.CreateDirectory(saveDirectory);
-        await File.WriteAllTextAsync(Path.Combine(saveDirectory, "game.sii"), """
+        await File.WriteAllTextAsync(Path.Combine(saveDirectory, "game.sii"), $$"""
             SiiNunit
             {
             player : player {
-              company_name: "Desert Line"
+              company_name: "{{companyName}}"
             }
 
             garage : garage.phoenix {
@@ -178,7 +227,14 @@ public sealed class ScsReferenceDataIngestionTests : IDisposable
             }
             }
             """);
-        return _root;
+    }
+
+    private async Task<string> WriteGameRootAsync(string folderName, string localeArchiveContent)
+    {
+        var gameRoot = Path.Combine(_root, folderName);
+        Directory.CreateDirectory(gameRoot);
+        await File.WriteAllTextAsync(Path.Combine(gameRoot, "locale.scs"), localeArchiveContent);
+        return gameRoot;
     }
 
     private SqliteConnection OpenTestConnection() =>
@@ -249,6 +305,24 @@ public sealed class ScsReferenceDataIngestionTests : IDisposable
                 driver_names : .driver.names {
                   name[23]: "Alice Ramirez"
                   name[24]: "+Lucy L."
+                }
+                }
+                """, cancellationToken);
+        }
+    }
+
+    private sealed class SourceSpecificArchiveExtractor(IReadOnlyDictionary<string, string> namesByArchivePath) : IScsArchiveExtractor
+    {
+        public async Task ExtractAsync(string extractorPath, string archivePath, string outputDirectory, CancellationToken cancellationToken)
+        {
+            var localeDirectory = Path.Combine(outputDirectory, "locale", "en_gb");
+            Directory.CreateDirectory(localeDirectory);
+            var driverName = namesByArchivePath[archivePath];
+            await File.WriteAllTextAsync(Path.Combine(localeDirectory, "driver_names.sii"), $$"""
+                SiiNunit
+                {
+                driver_names : .driver.names {
+                  name[23]: "{{driverName}}"
                 }
                 }
                 """, cancellationToken);
