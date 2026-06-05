@@ -201,7 +201,7 @@ internal static class CityOverviewBuilder
             ("Inbound Revenue", RowFormatting.Money(city.InboundProfit, company.CurrencySymbol), "Destination city"),
             ("Total Revenue", RowFormatting.Money(city.OutboundProfit + city.InboundProfit, company.CurrencySymbol), "Combined"),
             ("Expansion Score", city.ExpansionScore.ToString("0.##"), city.IsGarageEligible ? "Eligible" : "Not eligible"),
-            ("Player Route Score", city.PlayerRouteScore.ToString("0.##"), $"{city.PlayerVisitCount:N0} player visits"));
+            ("Player Origin Score", city.PlayerOriginScore.ToString("0.##"), $"{city.PlayerOriginJobCount:N0} player origin jobs"));
         AddChart(overview, "Revenue Trend", ProfitByDay(jobs));
         AddChart(overview, "Visit Trend", CountByDay(jobs));
         overview.TopLists.Add(new("Top Destinations", RouteRows(company, company.Routes ?? [], city.Id, true).Take(10)));

@@ -37,7 +37,7 @@ public sealed class RecommendNextGarageCityUseCaseTests
     }
 
     [Fact]
-    public async Task RecommendAsync_uses_player_route_score_as_tie_breaker_after_expansion_score()
+    public async Task RecommendAsync_uses_player_origin_score_as_tie_breaker_after_expansion_score()
     {
         var useCase = CreateUseCase();
 
@@ -46,8 +46,8 @@ public sealed class RecommendNextGarageCityUseCaseTests
         Assert.NotNull(recommendation);
         Assert.Equal("denver", recommendation.CityId);
         Assert.Equal(2.0m, recommendation.ExpansionScore);
-        Assert.Equal(4.95m, recommendation.PlayerRouteScore);
-        Assert.Contains("player routes", recommendation.Reason);
+        Assert.Equal(2.95m, recommendation.PlayerOriginScore);
+        Assert.Contains("player origin", recommendation.Reason);
     }
 
     [Fact]
@@ -122,7 +122,7 @@ public sealed class RecommendNextGarageCityUseCaseTests
                     []),
                 new CompanyStatistics(
                     "player-routes",
-                    "Player Routes",
+                    "Player Origin",
                     updated,
                     [],
                     [],
@@ -132,8 +132,8 @@ public sealed class RecommendNextGarageCityUseCaseTests
                     [],
                     [],
                     [
-                        new CityStatistic("denver", "Denver", false, true, 2, 1000, 1000, 2000, 2.0m, PlayerVisitCount: 2, PlayerBidirectionalProfit: 9500, PlayerRouteScore: 4.95m),
-                        new CityStatistic("spokane", "Spokane", false, true, 2, 3000, 3000, 6000, 2.0m, PlayerVisitCount: 0, PlayerBidirectionalProfit: 0, PlayerRouteScore: 0m)
+                        new CityStatistic("denver", "Denver", false, true, 2, 1000, 1000, 2000, 2.0m, PlayerOriginJobCount: 2, PlayerOriginProfit: 9500, PlayerOriginScore: 2.95m),
+                        new CityStatistic("spokane", "Spokane", false, true, 2, 3000, 3000, 6000, 2.0m, PlayerOriginJobCount: 0, PlayerOriginProfit: 0, PlayerOriginScore: 0m)
                     ],
                     [],
                     [])

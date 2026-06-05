@@ -50,9 +50,9 @@ public sealed record GridRowViewModel(
 
     public decimal ExpansionSort { get; init; }
 
-    public string PlayerRoutes { get; init; } = string.Empty;
+    public string PlayerOrigin { get; init; } = string.Empty;
 
-    public decimal PlayerRoutesSort { get; init; }
+    public decimal PlayerOriginSort { get; init; }
 }
 
 internal static class TableColumns
@@ -145,7 +145,7 @@ internal static class TableColumns
         new("Inbound", nameof(GridRowViewModel.Inbound), nameof(GridRowViewModel.InboundSort)),
         new("Total", nameof(GridRowViewModel.Total), nameof(GridRowViewModel.TotalSort)),
         new("Expansion", nameof(GridRowViewModel.Expansion), nameof(GridRowViewModel.ExpansionSort)),
-        new("Player Routes", nameof(GridRowViewModel.PlayerRoutes), nameof(GridRowViewModel.PlayerRoutesSort))
+        new("Player Origin", nameof(GridRowViewModel.PlayerOrigin), nameof(GridRowViewModel.PlayerOriginSort))
     ];
 }
 

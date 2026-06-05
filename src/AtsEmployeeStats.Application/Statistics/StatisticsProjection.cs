@@ -734,7 +734,7 @@ public static partial class StatisticsProjection
                 var expansionScore = (hasOwnedGarage || !isGarageEligible)
                     ? 0m
                     : Math.Round(expansionOutbound.Count + businessInbound.Count + (expansionOutbound.Sum(m => m.Profit) / 10000m), 2, MidpointRounding.AwayFromZero);
-                var playerRouteSignal = BuildPlayerRouteSignal(city, playerMissions);
+                var playerOriginSignal = BuildPlayerOriginSignal(city, playerMissions);
 
                 return new CityStatistic(
                     city,
@@ -746,32 +746,27 @@ public static partial class StatisticsProjection
                     inbound.Sum(mission => mission.Profit),
                     bidirectionalProfit,
                     expansionScore,
-                    playerRouteSignal.VisitCount,
-                    playerRouteSignal.BidirectionalProfit,
-                    playerRouteSignal.Score);
+                    playerOriginSignal.JobCount,
+                    playerOriginSignal.Profit,
+                    playerOriginSignal.Score);
             })
             .OrderByDescending(city => city.HasOwnedGarage)
             .ThenBy(city => city.Id, StringComparer.OrdinalIgnoreCase)
             .ToList();
     }
 
-    private static (int VisitCount, long BidirectionalProfit, decimal Score) BuildPlayerRouteSignal(
+    private static (int JobCount, long Profit, decimal Score) BuildPlayerOriginSignal(
         string city,
         IReadOnlyCollection<MissionStatistic> playerMissions)
     {
-        var playerCityMissions = playerMissions
+        var playerOriginMissions = playerMissions
             .Where(HasRoute)
-            .Where(mission =>
-                StringComparer.OrdinalIgnoreCase.Equals(NormalizeCityId(mission.SourceCity), city) ||
-                StringComparer.OrdinalIgnoreCase.Equals(NormalizeCityId(mission.TargetCity), city))
+            .Where(mission => StringComparer.OrdinalIgnoreCase.Equals(NormalizeCityId(mission.SourceCity), city))
             .ToList();
-        var visitCount = playerCityMissions.Count;
-        var bidirectionalProfit = playerCityMissions.Sum(mission => mission.Profit);
-        var hasOutbound = playerCityMissions.Any(mission => StringComparer.OrdinalIgnoreCase.Equals(NormalizeCityId(mission.SourceCity), city));
-        var hasInbound = playerCityMissions.Any(mission => StringComparer.OrdinalIgnoreCase.Equals(NormalizeCityId(mission.TargetCity), city));
-        var bidirectionalBonus = hasOutbound && hasInbound ? 2m : 0m;
-        var score = Math.Round(visitCount + bidirectionalBonus + (bidirectionalProfit / 10000m), 2, MidpointRounding.AwayFromZero);
-        return (visitCount, bidirectionalProfit, score);
+        var jobCount = playerOriginMissions.Count;
+        var profit = playerOriginMissions.Sum(mission => mission.Profit);
+        var score = Math.Round(jobCount + (profit / 10000m), 2, MidpointRounding.AwayFromZero);
+        return (jobCount, profit, score);
     }
 
     private static IReadOnlyList<TrendPointStatistic> BuildProfitTrends(

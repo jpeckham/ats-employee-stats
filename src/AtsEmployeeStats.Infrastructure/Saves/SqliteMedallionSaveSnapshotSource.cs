@@ -487,9 +487,9 @@ public sealed class SqliteMedallionSaveSnapshotSource(
                 inbound_profit integer not null,
                 bidirectional_profit integer not null,
                 expansion_score real not null,
-                player_visit_count integer not null default 0,
-                player_bidirectional_profit integer not null default 0,
-                player_route_score real not null default 0,
+                player_origin_job_count integer not null default 0,
+                player_origin_profit integer not null default 0,
+                player_origin_score real not null default 0,
                 primary key (company_id, city_id)
             );
 
@@ -617,9 +617,9 @@ public sealed class SqliteMedallionSaveSnapshotSource(
                 inbound_profit integer not null,
                 bidirectional_profit integer not null,
                 expansion_score real not null,
-                player_visit_count integer not null default 0,
-                player_bidirectional_profit integer not null default 0,
-                player_route_score real not null default 0,
+                player_origin_job_count integer not null default 0,
+                player_origin_profit integer not null default 0,
+                player_origin_score real not null default 0,
                 primary key (company_id, city_id)
             );
 
@@ -687,12 +687,12 @@ public sealed class SqliteMedallionSaveSnapshotSource(
         await EnsureColumnAsync(connection, "silver_jobs", "trailer_pk", "integer", cancellationToken);
         await EnsureColumnAsync(connection, "gold_job_details", "trailer_pk", "integer", cancellationToken);
         await EnsureColumnAsync(connection, "gold_job_details", "trailer_license_plate", "text", cancellationToken);
-        await EnsureColumnAsync(connection, "silver_cities", "player_visit_count", "integer not null default 0", cancellationToken);
-        await EnsureColumnAsync(connection, "silver_cities", "player_bidirectional_profit", "integer not null default 0", cancellationToken);
-        await EnsureColumnAsync(connection, "silver_cities", "player_route_score", "real not null default 0", cancellationToken);
-        await EnsureColumnAsync(connection, "gold_city_profitability", "player_visit_count", "integer not null default 0", cancellationToken);
-        await EnsureColumnAsync(connection, "gold_city_profitability", "player_bidirectional_profit", "integer not null default 0", cancellationToken);
-        await EnsureColumnAsync(connection, "gold_city_profitability", "player_route_score", "real not null default 0", cancellationToken);
+        await EnsureColumnAsync(connection, "silver_cities", "player_origin_job_count", "integer not null default 0", cancellationToken);
+        await EnsureColumnAsync(connection, "silver_cities", "player_origin_profit", "integer not null default 0", cancellationToken);
+        await EnsureColumnAsync(connection, "silver_cities", "player_origin_score", "real not null default 0", cancellationToken);
+        await EnsureColumnAsync(connection, "gold_city_profitability", "player_origin_job_count", "integer not null default 0", cancellationToken);
+        await EnsureColumnAsync(connection, "gold_city_profitability", "player_origin_profit", "integer not null default 0", cancellationToken);
+        await EnsureColumnAsync(connection, "gold_city_profitability", "player_origin_score", "real not null default 0", cancellationToken);
         await MigrateCompanySurrogateKeyAsync(connection, cancellationToken);
         await MigrateTrailerSchemaAsync(connection, cancellationToken);
     }
@@ -1596,12 +1596,12 @@ public sealed class SqliteMedallionSaveSnapshotSource(
                     insert into silver_cities (
                         company_id, city_id, display_name, has_owned_garage, is_garage_eligible,
                         visit_count, outbound_profit, inbound_profit, bidirectional_profit, expansion_score,
-                        player_visit_count, player_bidirectional_profit, player_route_score
+                        player_origin_job_count, player_origin_profit, player_origin_score
                     )
                     values (
                         $company_id, $city_id, $display_name, $has_owned_garage, $is_garage_eligible,
                         $visit_count, $outbound_profit, $inbound_profit, $bidirectional_profit, $expansion_score,
-                        $player_visit_count, $player_bidirectional_profit, $player_route_score
+                        $player_origin_job_count, $player_origin_profit, $player_origin_score
                     )
                     """,
                     cancellationToken,
@@ -1615,9 +1615,9 @@ public sealed class SqliteMedallionSaveSnapshotSource(
                     ("$inbound_profit", city.InboundProfit),
                     ("$bidirectional_profit", city.BidirectionalProfit),
                     ("$expansion_score", city.ExpansionScore),
-                    ("$player_visit_count", city.PlayerVisitCount),
-                    ("$player_bidirectional_profit", city.PlayerBidirectionalProfit),
-                    ("$player_route_score", city.PlayerRouteScore));
+                    ("$player_origin_job_count", city.PlayerOriginJobCount),
+                    ("$player_origin_profit", city.PlayerOriginProfit),
+                    ("$player_origin_score", city.PlayerOriginScore));
             }
 
             foreach (var route in company.Routes)
@@ -2070,12 +2070,12 @@ public sealed class SqliteMedallionSaveSnapshotSource(
                 insert into gold_city_profitability (
                     company_id, city_id, display_name, has_owned_garage, is_garage_eligible,
                     visit_count, outbound_profit, inbound_profit, bidirectional_profit, expansion_score,
-                    player_visit_count, player_bidirectional_profit, player_route_score
+                    player_origin_job_count, player_origin_profit, player_origin_score
                 )
                 values (
                     $company_id, $city_id, $display_name, $has_owned_garage, $is_garage_eligible,
                     $visit_count, $outbound_profit, $inbound_profit, $bidirectional_profit, $expansion_score,
-                    $player_visit_count, $player_bidirectional_profit, $player_route_score
+                    $player_origin_job_count, $player_origin_profit, $player_origin_score
                 )
                 """,
                 cancellationToken,
@@ -2089,9 +2089,9 @@ public sealed class SqliteMedallionSaveSnapshotSource(
                 ("$inbound_profit", city.InboundProfit),
                 ("$bidirectional_profit", city.BidirectionalProfit),
                 ("$expansion_score", city.ExpansionScore),
-                ("$player_visit_count", city.PlayerVisitCount),
-                ("$player_bidirectional_profit", city.PlayerBidirectionalProfit),
-                ("$player_route_score", city.PlayerRouteScore));
+                ("$player_origin_job_count", city.PlayerOriginJobCount),
+                ("$player_origin_profit", city.PlayerOriginProfit),
+                ("$player_origin_score", city.PlayerOriginScore));
         }
 
         foreach (var route in company.Routes)
@@ -2528,7 +2528,7 @@ public sealed class SqliteMedallionSaveSnapshotSource(
         command.CommandText = """
             select city_id, display_name, has_owned_garage, is_garage_eligible,
                    visit_count, outbound_profit, inbound_profit, bidirectional_profit, expansion_score,
-                   player_visit_count, player_bidirectional_profit, player_route_score
+                   player_origin_job_count, player_origin_profit, player_origin_score
             from gold_city_profitability
             where company_id = $company_id
             order by has_owned_garage desc, city_id

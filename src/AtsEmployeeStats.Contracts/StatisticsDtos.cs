@@ -112,9 +112,9 @@ public sealed record CityDto(
     long InboundProfit,
     long BidirectionalProfit,
     decimal ExpansionScore,
-    int PlayerVisitCount = 0,
-    long PlayerBidirectionalProfit = 0,
-    decimal PlayerRouteScore = 0);
+    int PlayerOriginJobCount = 0,
+    long PlayerOriginProfit = 0,
+    decimal PlayerOriginScore = 0);
 
 public sealed record RouteDto(
     string OriginCityId,
@@ -132,9 +132,9 @@ public sealed record GarageCityRecommendationDto(
     long BidirectionalProfit,
     int VisitCount,
     string Reason,
-    decimal PlayerRouteScore = 0,
-    int PlayerVisitCount = 0,
-    long PlayerBidirectionalProfit = 0);
+    decimal PlayerOriginScore = 0,
+    int PlayerOriginJobCount = 0,
+    long PlayerOriginProfit = 0);
 
 public sealed record TrailerRecommendationDto(
     string CompanyId,

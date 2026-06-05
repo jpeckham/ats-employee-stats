@@ -183,7 +183,7 @@ public sealed class StatisticsDashboardMapperTests
     }
 
     [Fact]
-    public void ToDashboardDto_keeps_player_route_score_separate_from_expansion_score()
+    public void ToDashboardDto_keeps_player_origin_score_separate_from_expansion_score()
     {
         var statistics = new AtsStatistics(
             new DateTimeOffset(2026, 6, 2, 12, 0, 0, TimeSpan.Zero),
@@ -224,13 +224,13 @@ public sealed class StatisticsDashboardMapperTests
 
         var denver = Assert.Single(company.Cities!, city => city.Id == "denver");
         Assert.Equal(0, denver.ExpansionScore);
-        Assert.Equal(2, denver.PlayerVisitCount);
-        Assert.Equal(9500, denver.PlayerBidirectionalProfit);
-        Assert.True(denver.PlayerRouteScore > 0);
+        Assert.Equal(1, denver.PlayerOriginJobCount);
+        Assert.Equal(4500, denver.PlayerOriginProfit);
+        Assert.Equal(1.45m, denver.PlayerOriginScore);
 
         var tucson = Assert.Single(company.Cities!, city => city.Id == "tucson");
         Assert.Equal(1, tucson.ExpansionScore);
-        Assert.Equal(0, tucson.PlayerRouteScore);
+        Assert.Equal(0, tucson.PlayerOriginScore);
     }
 
     [Fact]
