@@ -1,6 +1,7 @@
 using AtsEmployeeStats.Application.Saves;
 using AtsEmployeeStats.Application.Statistics.Queries;
 using AtsEmployeeStats.Contracts;
+using AtsEmployeeStats.Wpf.Threading;
 using AtsEmployeeStats.Wpf.ViewModels;
 using CommunityToolkit.Mvvm.ComponentModel;
 using static AtsEmployeeStats.Wpf.ViewModels.DetailHelpers;
@@ -10,7 +11,8 @@ namespace AtsEmployeeStats.Wpf.Controllers;
 public sealed partial class DashboardPresenter(
     IStatisticsDashboardUseCases dashboardUseCases,
     IStatisticsReloadUseCase reloadUseCase,
-    ExplorerPresenter explorerPresenter) : ObservableObject
+    ExplorerPresenter explorerPresenter,
+    IBackgroundRunner backgroundRunner) : ObservableObject
 {
     private DashboardQueryRequest _query = new();
     private DashboardStatisticsDto? _dashboard;
@@ -74,7 +76,7 @@ public sealed partial class DashboardPresenter(
             ResetLoadProgress();
             StatusText = "Checking for new save files...";
             var progress = new Progress<SaveLoadProgress>(ApplyLoadProgress);
-            _dashboard = await Task.Run(() => reloadUseCase.SyncAsync(_query.ToOptions(), CancellationToken.None, progress));
+            _dashboard = await backgroundRunner.RunAsync(() => reloadUseCase.SyncAsync(_query.ToOptions(), CancellationToken.None, progress));
             BuildExplorer(_dashboard.Companies);
             SelectedDetail = new CompaniesDetailViewModel(_dashboard.Companies);
             StatusText = $"Loaded {_dashboard.Companies.Count:N0} companies";
@@ -104,7 +106,7 @@ public sealed partial class DashboardPresenter(
         {
             IsBusy = true;
             StatusText = "Loading local statistics...";
-            _dashboard = await Task.Run(() => dashboardUseCases.GetDashboardAsync(_query.ToOptions(), CancellationToken.None));
+            _dashboard = await backgroundRunner.RunAsync(() => dashboardUseCases.GetDashboardAsync(_query.ToOptions(), CancellationToken.None));
             BuildExplorer(_dashboard.Companies);
             RestoreSelectedDetail(savedTabTitle);
             StatusText = $"Loaded {_dashboard.Companies.Count:N0} companies";
@@ -136,7 +138,7 @@ public sealed partial class DashboardPresenter(
             ResetLoadProgress();
             StatusText = "Reloading local save statistics...";
             var progress = new Progress<SaveLoadProgress>(ApplyLoadProgress);
-            _dashboard = await Task.Run(() => reloadUseCase.ReloadAsync(_query.ToOptions(), CancellationToken.None, progress));
+            _dashboard = await backgroundRunner.RunAsync(() => reloadUseCase.ReloadAsync(_query.ToOptions(), CancellationToken.None, progress));
             BuildExplorer(_dashboard.Companies);
             RestoreSelectedDetail(savedTabTitle);
             StatusText = $"Reloaded {_dashboard.Companies.Count:N0} companies";

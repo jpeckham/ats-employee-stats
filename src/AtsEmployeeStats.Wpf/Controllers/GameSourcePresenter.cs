@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using System.IO;
 using AtsEmployeeStats.Application.Saves;
+using AtsEmployeeStats.Wpf.Threading;
 using AtsEmployeeStats.Wpf.ViewModels;
 using CommunityToolkit.Mvvm.ComponentModel;
 
@@ -8,7 +9,8 @@ namespace AtsEmployeeStats.Wpf.Controllers;
 
 public sealed partial class GameSourcePresenter(
     GameSourceManagementUseCase gameSourceManagement,
-    GameSaveCatalogUseCase gameSaveCatalog) : ObservableObject
+    GameSaveCatalogUseCase gameSaveCatalog,
+    IBackgroundRunner backgroundRunner) : ObservableObject
 {
     [ObservableProperty]
     private bool isSourceWizardVisible;
@@ -32,11 +34,11 @@ public sealed partial class GameSourcePresenter(
         SourceWizardGames.Count == 0 ? string.Empty : $"Step {CurrentWizardIndex + 1:N0} of {SourceWizardGames.Count:N0}";
 
     public Task<bool> RequiresWizardAsync() =>
-        Task.Run(() => gameSourceManagement.RequiresWizardAsync(CancellationToken.None));
+        backgroundRunner.RunAsync(() => gameSourceManagement.RequiresWizardAsync(CancellationToken.None));
 
     public async Task LoadGameSourcesAsync()
     {
-        var sources = await Task.Run(() => gameSourceManagement.DiscoverAsync(CancellationToken.None));
+        var sources = await backgroundRunner.RunAsync(() => gameSourceManagement.DiscoverAsync(CancellationToken.None));
         GameSources.Clear();
         foreach (var source in sources)
             GameSources.Add(ToViewModel(source));
@@ -47,7 +49,7 @@ public sealed partial class GameSourcePresenter(
     {
         try
         {
-            var wizardGames = await Task.Run(async () =>
+            var wizardGames = await backgroundRunner.RunAsync(async () =>
             {
                 var rows = GameSources.ToList();
                 var games = new List<GameSourceWizardGameViewModel>();
@@ -115,7 +117,7 @@ public sealed partial class GameSourcePresenter(
         try
         {
             var configurations = SourceWizardGames.Select(ToConfiguration).ToList();
-            var result = await Task.Run(() => gameSourceManagement.SaveValidatedAsync(
+            var result = await backgroundRunner.RunAsync(() => gameSourceManagement.SaveValidatedAsync(
                 configurations,
                 CancellationToken.None));
             if (!result.Saved)
@@ -134,7 +136,7 @@ public sealed partial class GameSourcePresenter(
     public async Task LoadGameSavesAsync()
     {
         var configurations = GameSources.Select(ToConfiguration).ToList();
-        var saves = await Task.Run(() => gameSaveCatalog.FindSaveGamesAsync(
+        var saves = await backgroundRunner.RunAsync(() => gameSaveCatalog.FindSaveGamesAsync(
             configurations,
             CancellationToken.None));
         GameSaves.Clear();

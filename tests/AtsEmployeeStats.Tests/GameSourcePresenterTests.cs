@@ -1,5 +1,6 @@
 using AtsEmployeeStats.Application.Saves;
 using AtsEmployeeStats.Wpf.Controllers;
+using AtsEmployeeStats.Wpf.Threading;
 
 namespace AtsEmployeeStats.Tests;
 
@@ -8,6 +9,7 @@ public sealed class GameSourcePresenterTests
     [Fact]
     public async Task LoadGameSourcesAsync_maps_configured_sources_and_discovered_saves_to_wpf_rows()
     {
+        var backgroundRunner = new RecordingBackgroundRunner();
         var presenter = CreatePresenter(
             installations:
             [
@@ -27,7 +29,8 @@ public sealed class GameSourcePresenterTests
                     @"D:\ATS\profiles\Profile\save\autosave",
                     "Ats:D:\\ATS\\profiles",
                     @"D:\ATS\profiles")
-            ]);
+            ],
+            backgroundRunner: backgroundRunner);
 
         await presenter.LoadGameSourcesAsync();
 
@@ -46,11 +49,13 @@ public sealed class GameSourcePresenterTests
         Assert.Equal("Profile", save.ProfileName);
         Assert.Equal("autosave", save.SaveName);
         Assert.Equal(@"D:\ATS\profiles", save.SaveRootPath);
+        Assert.Equal(2, backgroundRunner.RunCount);
     }
 
     [Fact]
     public async Task StartSourceWizardAsync_maps_candidates_and_navigates_wizard_steps()
     {
+        var backgroundRunner = new RecordingBackgroundRunner();
         var presenter = CreatePresenter(
             installations:
             [
@@ -73,7 +78,8 @@ public sealed class GameSourcePresenterTests
                         new GameSaveRootCandidate(GameType.Ats, @"D:\ConfiguredSaves", false, 0, ["configured"])
                     ]),
                 [GameType.Ets2] = new(GameType.Ets2, [], [])
-            });
+            },
+            backgroundRunner: backgroundRunner);
         await presenter.LoadGameSourcesAsync();
 
         var result = await presenter.StartSourceWizardAsync();
@@ -82,6 +88,7 @@ public sealed class GameSourcePresenterTests
         Assert.True(presenter.IsSourceWizardVisible);
         Assert.Equal("Step 1 of 2", presenter.SourceWizardStepText);
         Assert.Equal("Ats", presenter.CurrentWizardGame?.GameKey);
+        Assert.Equal(3, backgroundRunner.RunCount);
         Assert.Equal(@"D:\ConfiguredATS", presenter.CurrentWizardGame?.InstallCandidates.Single(candidate => candidate.IsSelected).Path);
         Assert.Contains(presenter.CurrentWizardGame!.SaveRootCandidates, candidate => candidate.Path == @"D:\ConfiguredSaves" && candidate.IsSelected);
         Assert.Contains(presenter.CurrentWizardGame.SaveRootCandidates, candidate => candidate.Path == @"C:\ATS\profiles" && candidate.IsSelected);
@@ -147,13 +154,33 @@ public sealed class GameSourcePresenterTests
         InMemoryGameSourceSettingsStore? settingsStore = null,
         IReadOnlyList<SaveGame>? saves = null,
         IReadOnlyDictionary<GameType, GameSourceCandidates>? candidates = null,
-        IReadOnlyDictionary<string, GamePathValidation>? validationResults = null)
+        IReadOnlyDictionary<string, GamePathValidation>? validationResults = null,
+        IBackgroundRunner? backgroundRunner = null)
     {
         var discovery = new StubGameSourceDiscovery(installations, candidates, validationResults);
         var store = settingsStore ?? new InMemoryGameSourceSettingsStore(settings ?? new GameSourceSettings([]));
         var sourceUseCase = new GameSourceManagementUseCase(discovery, store);
         var catalogUseCase = new GameSaveCatalogUseCase(new StubConfiguredGameSaveDiscovery(saves ?? []));
-        return new GameSourcePresenter(sourceUseCase, catalogUseCase);
+        return new GameSourcePresenter(sourceUseCase, catalogUseCase, backgroundRunner ?? new ImmediateBackgroundRunner());
+    }
+
+    private sealed class RecordingBackgroundRunner : IBackgroundRunner
+    {
+        public int RunCount { get; private set; }
+
+        public Task<T> RunAsync<T>(Func<T> work, CancellationToken cancellationToken = default)
+        {
+            RunCount++;
+            cancellationToken.ThrowIfCancellationRequested();
+            return Task.FromResult(work());
+        }
+
+        public async Task<T> RunAsync<T>(Func<Task<T>> work, CancellationToken cancellationToken = default)
+        {
+            RunCount++;
+            cancellationToken.ThrowIfCancellationRequested();
+            return await work();
+        }
     }
 
     private sealed class StubGameSourceDiscovery(

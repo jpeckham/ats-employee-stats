@@ -3,6 +3,7 @@ using AtsEmployeeStats.Application.Statistics.Output;
 using AtsEmployeeStats.Application.Statistics.Queries;
 using AtsEmployeeStats.Contracts;
 using AtsEmployeeStats.Wpf.Controllers;
+using AtsEmployeeStats.Wpf.Threading;
 using AtsEmployeeStats.Wpf.ViewModels;
 
 namespace AtsEmployeeStats.Tests;
@@ -57,6 +58,7 @@ public sealed class DashboardPresenterTests
     public async Task ReloadAsync_sets_busy_progress_status_and_uses_exclude_player_query_option()
     {
         var dashboardUseCases = new StubDashboardUseCases();
+        var backgroundRunner = new RecordingBackgroundRunner();
         var reloadUseCase = new StubReloadUseCase
         {
             ReloadResult = Dashboard(Company("company-a", "Northwind")),
@@ -67,11 +69,12 @@ public sealed class DashboardPresenterTests
                 Assert.Equal("Reloading local save statistics...", presenter.StatusText);
             }
         };
-        var presenter = CreatePresenter(dashboardUseCases, reloadUseCase);
+        var presenter = CreatePresenter(dashboardUseCases, reloadUseCase, backgroundRunner);
         presenter.ExcludePlayerDriver = true;
 
         await presenter.ReloadAsync([], []);
 
+        Assert.Equal(1, backgroundRunner.RunCount);
         Assert.False(presenter.IsBusy);
         Assert.False(presenter.IsLoadProgressVisible);
         Assert.Equal("Reloaded 1 companies", presenter.StatusText);
@@ -82,11 +85,12 @@ public sealed class DashboardPresenterTests
     [Fact]
     public async Task RefreshAsync_restores_selected_detail_tab_after_dashboard_reload()
     {
+        var backgroundRunner = new RecordingBackgroundRunner();
         var dashboardUseCases = new StubDashboardUseCases
         {
             DashboardResult = Dashboard(Company("company-a", "Northwind", garageId: "garage-a", driverId: "driver-a"))
         };
-        var presenter = CreatePresenter(dashboardUseCases);
+        var presenter = CreatePresenter(dashboardUseCases, backgroundRunner: backgroundRunner);
         await presenter.RefreshAsync([], []);
         presenter.SelectExplorerNode(new ExplorerNodeViewModel("Northwind", ExplorerNodeKind.Company, "company-a"), []);
         presenter.NotifyTabSelected("Drivers");
@@ -98,6 +102,7 @@ public sealed class DashboardPresenterTests
         Assert.Equal("Northwind Updated", detail.Title);
         Assert.Equal("Drivers", detail.Tabs[detail.SelectedTabIndex].Title);
         Assert.Equal("Loaded 1 companies", presenter.StatusText);
+        Assert.Equal(2, backgroundRunner.RunCount);
     }
 
     [Fact]
@@ -129,15 +134,36 @@ public sealed class DashboardPresenterTests
 
     private static DashboardPresenter CreatePresenter(
         StubDashboardUseCases? dashboardUseCases = null,
-        StubReloadUseCase? reloadUseCase = null)
+        StubReloadUseCase? reloadUseCase = null,
+        IBackgroundRunner? backgroundRunner = null)
     {
         var presenter = new DashboardPresenter(
             dashboardUseCases ?? new StubDashboardUseCases(),
             reloadUseCase ?? new StubReloadUseCase(),
-            new ExplorerPresenter());
+            new ExplorerPresenter(),
+            backgroundRunner ?? new ImmediateBackgroundRunner());
         if (reloadUseCase is not null)
             reloadUseCase.Presenter = presenter;
         return presenter;
+    }
+
+    private sealed class RecordingBackgroundRunner : IBackgroundRunner
+    {
+        public int RunCount { get; private set; }
+
+        public Task<T> RunAsync<T>(Func<T> work, CancellationToken cancellationToken = default)
+        {
+            RunCount++;
+            cancellationToken.ThrowIfCancellationRequested();
+            return Task.FromResult(work());
+        }
+
+        public async Task<T> RunAsync<T>(Func<Task<T>> work, CancellationToken cancellationToken = default)
+        {
+            RunCount++;
+            cancellationToken.ThrowIfCancellationRequested();
+            return await work();
+        }
     }
 
     private static DashboardStatisticsDto Dashboard(params CompanyDto[] companies) =>

@@ -227,7 +227,7 @@ public sealed class WpfPresentationMigrationTests
         Assert.Contains("SaveFileProgressValue", mainWindow, StringComparison.Ordinal);
         Assert.Contains("SaveContentProgressValue", mainWindow, StringComparison.Ordinal);
         Assert.Contains("new Progress<SaveLoadProgress>", viewModels, StringComparison.Ordinal);
-        Assert.Contains("Task.Run(() => reloadUseCase.ReloadAsync", viewModels, StringComparison.Ordinal);
+        Assert.Contains("backgroundRunner.RunAsync(() => reloadUseCase.ReloadAsync", viewModels, StringComparison.Ordinal);
         Assert.Contains("ApplyLoadProgress", viewModels, StringComparison.Ordinal);
     }
 
@@ -248,13 +248,17 @@ public sealed class WpfPresentationMigrationTests
         var root = FindRepositoryRoot();
         var wpfRoot = Path.Combine(root, "src", "AtsEmployeeStats.Wpf");
         var viewModels = ReadAllSource(wpfRoot, "ViewModels");
+        var app = File.ReadAllText(Path.Combine(wpfRoot, "App.xaml.cs"));
 
         Assert.Contains("await Task.Yield()", viewModels, StringComparison.Ordinal);
-        Assert.Contains("Task.Run(() => gameSourceManagement.RequiresWizardAsync", viewModels, StringComparison.Ordinal);
-        Assert.Contains("Task.Run(() => gameSourceManagement.DiscoverAsync", viewModels, StringComparison.Ordinal);
-        Assert.Contains("Task.Run(() => gameSaveCatalog.FindSaveGamesAsync", viewModels, StringComparison.Ordinal);
-        Assert.Contains("Task.Run(() => dashboardUseCases.GetDashboardAsync", viewModels, StringComparison.Ordinal);
-        Assert.Contains("Task.Run(async ()", viewModels, StringComparison.Ordinal);
+        Assert.Contains("IBackgroundRunner", viewModels, StringComparison.Ordinal);
+        Assert.Contains("TaskBackgroundRunner", app, StringComparison.Ordinal);
+        Assert.Contains("backgroundRunner.RunAsync(() => gameSourceManagement.RequiresWizardAsync", viewModels, StringComparison.Ordinal);
+        Assert.Contains("backgroundRunner.RunAsync(() => gameSourceManagement.DiscoverAsync", viewModels, StringComparison.Ordinal);
+        Assert.Contains("backgroundRunner.RunAsync(() => gameSaveCatalog.FindSaveGamesAsync", viewModels, StringComparison.Ordinal);
+        Assert.Contains("backgroundRunner.RunAsync(() => dashboardUseCases.GetDashboardAsync", viewModels, StringComparison.Ordinal);
+        Assert.Contains("backgroundRunner.RunAsync(async ()", viewModels, StringComparison.Ordinal);
+        Assert.DoesNotContain("Task.Run(", viewModels, StringComparison.Ordinal);
         Assert.Contains("DiscoverCandidatesAsync(game", viewModels, StringComparison.Ordinal);
     }
 
