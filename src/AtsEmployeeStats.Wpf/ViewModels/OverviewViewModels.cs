@@ -343,7 +343,9 @@ internal static class OverviewBuilderHelpers
                     [])
                 {
                     Target = new(ExplorerNodeKind.City, company.Id, relatedCityId),
-                    ProfitSort = route.Profit
+                    ProfitSort = route.Profit,
+                    DetailSort = route.JobCount,
+                    SecondarySort = route.ProfitPerMile
                 };
             });
 

@@ -30,6 +30,10 @@ public sealed record GridRowViewModel(
 
     public string Eligible { get; init; } = string.Empty;
 
+    public decimal DetailSort { get; init; }
+
+    public decimal SecondarySort { get; init; }
+
     public string Visits { get; init; } = string.Empty;
 
     public int VisitsSort { get; init; }
@@ -62,7 +66,7 @@ internal static class TableColumns
         new("Company", nameof(GridRowViewModel.Name), Width: 2),
         new("Profit", nameof(GridRowViewModel.Profit), nameof(GridRowViewModel.ProfitSort)),
         new("Summary", nameof(GridRowViewModel.Detail), Width: 2),
-        new("Jobs", nameof(GridRowViewModel.Secondary)),
+        new("Jobs", nameof(GridRowViewModel.Secondary), nameof(GridRowViewModel.SecondarySort)),
         new("Trend", nameof(GridRowViewModel.Trend), Width: 1.2, IsTrend: true)
     ];
 
@@ -80,7 +84,7 @@ internal static class TableColumns
         new("Name", nameof(GridRowViewModel.Name), Width: 2),
         new("Profit", nameof(GridRowViewModel.Profit), nameof(GridRowViewModel.ProfitSort)),
         new("Staff", nameof(GridRowViewModel.Detail), Width: 2),
-        new("Avg/Day", nameof(GridRowViewModel.Secondary)),
+        new("Avg/Day", nameof(GridRowViewModel.Secondary), nameof(GridRowViewModel.SecondarySort)),
         new("Trend", nameof(GridRowViewModel.Trend), Width: 1.2, IsTrend: true)
     ];
 
@@ -89,7 +93,7 @@ internal static class TableColumns
         new("Name", nameof(GridRowViewModel.Name), Width: 2),
         new("Profit", nameof(GridRowViewModel.Profit), nameof(GridRowViewModel.ProfitSort)),
         new("Assignment", nameof(GridRowViewModel.Detail), Width: 2),
-        new("Jobs", nameof(GridRowViewModel.Secondary)),
+        new("Jobs", nameof(GridRowViewModel.Secondary), nameof(GridRowViewModel.SecondarySort)),
         new("Trend", nameof(GridRowViewModel.Trend), Width: 1.2, IsTrend: true)
     ];
 
@@ -107,7 +111,7 @@ internal static class TableColumns
         new("Name", nameof(GridRowViewModel.Name), Width: 2),
         new("Profit", nameof(GridRowViewModel.Profit), nameof(GridRowViewModel.ProfitSort)),
         new("Type / Location", nameof(GridRowViewModel.Detail), Width: 2),
-        new("Jobs", nameof(GridRowViewModel.Secondary)),
+        new("Jobs", nameof(GridRowViewModel.Secondary), nameof(GridRowViewModel.SecondarySort)),
         new("Trend", nameof(GridRowViewModel.Trend), Width: 1.2, IsTrend: true)
     ];
 
@@ -116,7 +120,7 @@ internal static class TableColumns
         new("Cargo", nameof(GridRowViewModel.Name), Width: 2),
         new("Profit", nameof(GridRowViewModel.Profit), nameof(GridRowViewModel.ProfitSort)),
         new("Route", nameof(GridRowViewModel.Detail), Width: 2),
-        new("Day", nameof(GridRowViewModel.Secondary))
+        new("Day", nameof(GridRowViewModel.Secondary), nameof(GridRowViewModel.SecondarySort))
     ];
 
     public static readonly IReadOnlyList<TableColumnViewModel> GarageAssignments =
@@ -131,8 +135,8 @@ internal static class TableColumns
     [
         new("Route", nameof(GridRowViewModel.Name), Width: 2),
         new("Profit", nameof(GridRowViewModel.Profit), nameof(GridRowViewModel.ProfitSort)),
-        new("Jobs", nameof(GridRowViewModel.Detail)),
-        new("$/Mile", nameof(GridRowViewModel.Secondary))
+        new("Jobs", nameof(GridRowViewModel.Detail), nameof(GridRowViewModel.DetailSort)),
+        new("$/Mile", nameof(GridRowViewModel.Secondary), nameof(GridRowViewModel.SecondarySort))
     ];
 
     public static readonly IReadOnlyList<TableColumnViewModel> Cities =

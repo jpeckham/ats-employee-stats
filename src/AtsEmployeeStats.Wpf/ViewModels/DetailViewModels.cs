@@ -173,7 +173,9 @@ public sealed class CityDetailViewModel : EntityDetailViewModel
         Tabs.Add(new("Jobs", company.Missions.Where(job => Same(job.SourceCity, city.Id) || Same(job.TargetCity, city.Id)).Select(job => Rows.Job(company, job)), TableColumns.Jobs));
         Tabs.Add(new("Routes", (company.Routes ?? []).Where(route => Same(route.OriginCityId, city.Id) || Same(route.DestinationCityId, city.Id)).Select(route => new GridRowViewModel($"{route.OriginCityId} to {route.DestinationCityId}", RowFormatting.Money(route.Profit, company.CurrencySymbol), $"{route.JobCount:N0} jobs", $"{route.ProfitPerMile:0.00}/mi", [])
         {
-            ProfitSort = route.Profit
+            ProfitSort = route.Profit,
+            DetailSort = route.JobCount,
+            SecondarySort = route.ProfitPerMile
         }), TableColumns.Routes));
     }
 }
@@ -184,14 +186,16 @@ internal static class Rows
         new(garage.DisplayName, RowFormatting.Money(garage.Profit, company.CurrencySymbol), $"{garage.EmployeeCount:N0} drivers / {garage.TruckCount:N0} trucks", $"{RowFormatting.Money(garage.ProfitPerDay, company.CurrencySymbol)}/day", RowFormatting.Trend(garage.Trend), garage)
         {
             Target = new(ExplorerNodeKind.Garage, company.Id, garage.Id),
-            ProfitSort = garage.Profit
+            ProfitSort = garage.Profit,
+            SecondarySort = garage.ProfitPerDay
         };
 
     public static GridRowViewModel Driver(CompanyDto company, DriverDto driver) =>
         new(driver.DisplayName, RowFormatting.Money(driver.Profit, company.CurrencySymbol), $"{GarageName(company, driver.GarageId)} / {TruckName(company, driver.TruckId)}", $"{driver.JobCount:N0} jobs", RowFormatting.Trend(driver.Trend), driver)
         {
             Target = new(ExplorerNodeKind.Driver, company.Id, driver.Id),
-            ProfitSort = driver.Profit
+            ProfitSort = driver.Profit,
+            SecondarySort = driver.JobCount
         };
 
     public static GridRowViewModel Truck(CompanyDto company, TruckDto truck) =>
@@ -205,14 +209,16 @@ internal static class Rows
         new(trailer.LicensePlate ?? trailer.Id, RowFormatting.Money(trailer.Profit, company.CurrencySymbol), $"{trailer.TrailerType} / {GarageName(company, trailer.GarageId)}", $"{trailer.JobCount:N0} jobs", RowFormatting.Trend(trailer.Trend), trailer)
         {
             Target = new(ExplorerNodeKind.Trailer, company.Id, trailer.LicensePlate ?? trailer.Id),
-            ProfitSort = trailer.Profit
+            ProfitSort = trailer.Profit,
+            SecondarySort = trailer.JobCount
         };
 
     public static GridRowViewModel Job(CompanyDto company, MissionDto job) =>
         new(string.IsNullOrWhiteSpace(job.Cargo) ? job.Id : job.Cargo!, RowFormatting.Money(job.Profit, company.CurrencySymbol), $"{RowFormatting.Value(job.SourceCity)} to {RowFormatting.Value(job.TargetCity)}", job.TimestampDay?.ToString() ?? "-", [], job)
         {
             Target = new(ExplorerNodeKind.Job, company.Id, job.Id),
-            ProfitSort = job.Profit
+            ProfitSort = job.Profit,
+            SecondarySort = job.TimestampDay ?? 0
         };
 
     public static GridRowViewModel City(CompanyDto company, CityDto city) =>

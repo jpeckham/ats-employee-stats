@@ -190,7 +190,8 @@ public sealed class CompaniesDetailViewModel : EntityDetailViewModel
             company)
         {
             Target = new(ExplorerNodeKind.Company, company.Id),
-            ProfitSort = company.Profit
+            ProfitSort = company.Profit,
+            SecondarySort = company.Missions.Count
         }), TableColumns.Companies));
     }
 }

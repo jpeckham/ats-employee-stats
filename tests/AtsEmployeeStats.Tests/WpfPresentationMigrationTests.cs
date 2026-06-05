@@ -395,6 +395,66 @@ public sealed class WpfPresentationMigrationTests
     }
 
     [Fact]
+    public void Wpf_numeric_secondary_columns_sort_by_numeric_values_not_display_text()
+    {
+        Assert.Equal(
+            nameof(Wpf.ViewModels.GridRowViewModel.SecondarySort),
+            Wpf.ViewModels.TableColumns.Garages.Single(column => column.Header == "Avg/Day").SortMemberPath);
+        Assert.Equal(
+            nameof(Wpf.ViewModels.GridRowViewModel.SecondarySort),
+            Wpf.ViewModels.TableColumns.Drivers.Single(column => column.Header == "Jobs").SortMemberPath);
+        Assert.Equal(
+            nameof(Wpf.ViewModels.GridRowViewModel.SecondarySort),
+            Wpf.ViewModels.TableColumns.Trailers.Single(column => column.Header == "Jobs").SortMemberPath);
+        Assert.Equal(
+            nameof(Wpf.ViewModels.GridRowViewModel.SecondarySort),
+            Wpf.ViewModels.TableColumns.Jobs.Single(column => column.Header == "Day").SortMemberPath);
+        Assert.Equal(
+            nameof(Wpf.ViewModels.GridRowViewModel.DetailSort),
+            Wpf.ViewModels.TableColumns.Routes.Single(column => column.Header == "Jobs").SortMemberPath);
+        Assert.Equal(
+            nameof(Wpf.ViewModels.GridRowViewModel.SecondarySort),
+            Wpf.ViewModels.TableColumns.Routes.Single(column => column.Header == "$/Mile").SortMemberPath);
+
+        var company = new AtsEmployeeStats.Contracts.CompanyDto(
+            "company",
+            "Company",
+            0,
+            Garages:
+            [
+                new("low", "Low", 100, 2, 1, 1),
+                new("high", "High", 100, 10, 1, 1)
+            ],
+            Drivers:
+            [
+                new("few", "Few", 100, 1, null, null, 2),
+                new("many", "Many", 100, 1, null, null, 10)
+            ],
+            Trucks: [],
+            Missions:
+            [
+                new("early", null, null, null, "Early", null, null, 100, 2),
+                new("late", null, null, null, "Late", null, null, 100, 10)
+            ],
+            TrailerTypes: [],
+            Trailers:
+            [
+                new("few", "Dry Van", 100, 2),
+                new("many", "Dry Van", 100, 10)
+            ],
+            Routes:
+            [
+                new("a", "b", 100, 2, 1.25m, 0),
+                new("c", "d", 100, 10, 9.75m, 0)
+            ]);
+
+        Assert.Equal([2m, 10m], company.Garages.Select(garage => Wpf.ViewModels.Rows.Garage(company, garage).SecondarySort));
+        Assert.Equal([2m, 10m], company.Drivers.Select(driver => Wpf.ViewModels.Rows.Driver(company, driver).SecondarySort));
+        Assert.Equal([2m, 10m], company.Missions.Select(job => Wpf.ViewModels.Rows.Job(company, job).SecondarySort));
+        Assert.Equal([2m, 10m], company.Trailers!.Select(trailer => Wpf.ViewModels.Rows.Trailer(company, trailer).SecondarySort));
+    }
+
+    [Fact]
     public void Wpf_preserves_clean_architecture_boundaries()
     {
         var root = FindRepositoryRoot();
