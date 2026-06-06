@@ -527,6 +527,34 @@ public sealed class SqliteMedallionSaveSnapshotSourceTests : IDisposable
     }
 
     [Fact]
+    public async Task IngestAsync_force_reparses_unchanged_save_files_from_disk()
+    {
+        var savePath = await WriteSaveAsync("autosave", "Desert Line");
+        var source = new SqliteMedallionSaveSnapshotSource(_root, _dbPath);
+        var service = new StatisticsService(source);
+        await service.IngestAsync(CancellationToken.None);
+        var originalLastWrite = File.GetLastWriteTimeUtc(savePath);
+
+        var replacement = (await File.ReadAllTextAsync(savePath))
+            .Replace("Desert Line", "Copper Line");
+        Assert.Equal(new FileInfo(savePath).Length, replacement.Length);
+        await File.WriteAllTextAsync(savePath, replacement);
+        File.SetLastWriteTimeUtc(savePath, originalLastWrite);
+
+        await service.IngestAsync(CancellationToken.None, force: true);
+
+        using var connection = OpenTestConnection();
+        await connection.OpenAsync();
+
+        Assert.Equal(
+            "Copper Line",
+            await QuerySingleAsync(
+                connection,
+                "select display_name from silver_companies",
+                reader => reader.GetString(0)));
+    }
+
+    [Fact]
     public async Task IngestAsync_reports_no_file_loading_on_second_run_when_no_new_saves()
     {
         await WriteSaveAsync("autosave", "Desert Line");
@@ -554,6 +582,55 @@ public sealed class SqliteMedallionSaveSnapshotSourceTests : IDisposable
         Assert.Contains(progress, p => p.Stage == SaveLoadStage.BuildingStatistics);
         Assert.Contains(progress, p => p.Stage == SaveLoadStage.WritingSilver && p.PhaseTotal > 0);
         Assert.Contains(progress, p => p.Stage == SaveLoadStage.WritingGold && p.PhaseTotal > 0);
+    }
+
+    [Fact]
+    public async Task IngestAsync_filters_irrelevant_bronze_unit_types_during_projection_rebuild()
+    {
+        await WriteSaveWithIrrelevantBronzeUnitsAsync();
+        var source = new SqliteMedallionSaveSnapshotSource(_root, _dbPath);
+        var observedUnitTypes = new List<string>();
+
+        SqliteMedallionSaveSnapshotSource.BronzeUnitReadObserver = observedUnitTypes.Add;
+        try
+        {
+            await source.IngestAsync(CancellationToken.None, force: true);
+        }
+        finally
+        {
+            SqliteMedallionSaveSnapshotSource.BronzeUnitReadObserver = null;
+        }
+
+        Assert.Contains("player", observedUnitTypes);
+        Assert.DoesNotContain("economy_event", observedUnitTypes);
+    }
+
+    [Fact]
+    public async Task IngestAsync_preserves_player_profit_log_routes_from_delivery_log_when_filtering_bronze()
+    {
+        await WritePlayerRouteCorrelationSaveAsync();
+        var source = new SqliteMedallionSaveSnapshotSource(_root, _dbPath);
+
+        await source.IngestAsync(CancellationToken.None, force: true);
+
+        using var connection = OpenTestConnection();
+        await connection.OpenAsync();
+
+        Assert.Equal(
+            ("player", "machinery", "las_vegas", "denver", 7000L),
+            await QuerySingleAsync<(string, string, string, string, long)>(
+                connection,
+                """
+                select driver_id, cargo, origin_city, destination_city, profit
+                from gold_job_details
+                where job_id = '_nameless.player.job.1'
+                """,
+                reader => (
+                    reader.GetString(0),
+                    reader.GetString(1),
+                    reader.GetString(2),
+                    reader.GetString(3),
+                    reader.GetInt64(4))));
     }
 
     [Fact]
@@ -752,6 +829,101 @@ public sealed class SqliteMedallionSaveSnapshotSourceTests : IDisposable
             trailer : trailer.reefer.1 {
               trailer_definition: trailer_def.scs.box.reefer
               license_plate: "200B-420|texas"
+            }
+            }
+            """);
+        File.SetLastWriteTimeUtc(savePath, DateTime.UtcNow);
+    }
+
+    private async Task WriteSaveWithIrrelevantBronzeUnitsAsync()
+    {
+        var saveDirectory = Path.Combine(_root, "profiles", "506C61796572", "save", "autosave");
+        Directory.CreateDirectory(saveDirectory);
+        var savePath = Path.Combine(saveDirectory, "game.sii");
+        await File.WriteAllTextAsync(savePath, """
+            SiiNunit
+            {
+            player : player {
+              company_name: "Desert Line"
+            }
+
+            garage : garage.phoenix {
+              city: phoenix
+              employees[0]: driver.alice
+            }
+
+            driver : driver.alice {
+              name: "Alice Ramirez"
+            }
+
+            economy_event : event.massive.1 {
+              payload[0]: ignored
+              payload[1]: ignored
+              payload[2]: ignored
+            }
+            }
+            """);
+        File.SetLastWriteTimeUtc(savePath, DateTime.UtcNow);
+    }
+
+    private async Task WritePlayerRouteCorrelationSaveAsync()
+    {
+        var saveDirectory = Path.Combine(_root, "profiles", "506C61796572", "save", "autosave");
+        Directory.CreateDirectory(saveDirectory);
+        var savePath = Path.Combine(saveDirectory, "game.sii");
+        await File.WriteAllTextAsync(savePath, """
+            SiiNunit
+            {
+            player : player {
+              company_name: "Desert Line"
+              profile_name: "James"
+              hq_city: las_vegas
+              assigned_truck: truck.player
+            }
+
+            economy : economy {
+              delivery_log: delivery_log.player
+            }
+
+            delivery_log : delivery_log.player {
+              entries[0]: delivery.entry.1
+            }
+
+            delivery_log_entry : delivery.entry.1 {
+              params[0]: 60480
+              params[1]: company.foo.las_vegas
+              params[2]: company.foo.denver
+              params[3]: machinery
+              params[5]: 8500
+            }
+
+            driver_player : driver.100 {
+              profit_log: profit_log.player
+            }
+
+            garage : garage.las_vegas {
+              city: las_vegas
+              drivers[0]: driver.100
+              vehicles[0]: truck.player
+            }
+
+            vehicle : truck.player {
+              license_plate: "PLYR-1"
+            }
+
+            profit_log : profit_log.player {
+              stats_data[0]: _nameless.player.job.1
+            }
+
+            profit_log_entry : _nameless.player.job.1 {
+              revenue: 8500
+              wage: 0
+              maintenance: 500
+              fuel: 1000
+              cargo: ""
+              source_city: ""
+              destination_city: ""
+              timestamp_day: 42
             }
             }
             """);

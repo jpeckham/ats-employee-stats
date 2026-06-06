@@ -29,7 +29,7 @@ public static partial class StatisticsProjection
             companies);
     }
 
-    private static CompanyStatistics BuildCompany(IReadOnlyCollection<SaveSnapshot> snapshots)
+    internal static CompanyStatistics BuildCompany(IReadOnlyCollection<SaveSnapshot> snapshots)
     {
         var latest = snapshots.OrderByDescending(snapshot => snapshot.LastWritten).First();
         var units = latest.Document.Units;
@@ -401,7 +401,7 @@ public static partial class StatisticsProjection
             });
     }
 
-    private static string GetCompanyKey(SaveSnapshot snapshot) =>
+    internal static string GetCompanyKey(SaveSnapshot snapshot) =>
         BuildCompanyId(GetCompanyDisplayName(snapshot), snapshot.SourceKey);
 
     private static string BuildCompanyId(string companyName, string? sourceKey)

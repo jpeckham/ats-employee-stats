@@ -18,8 +18,37 @@ public sealed class SqliteMedallionSaveSnapshotSource(
     string? sourceKeyPrefix = null) : ISaveSnapshotSource, IStatisticsQuerySource, IStatisticsIngestor
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+    private static readonly string[] CompanyIdentityBronzeUnitTypes = ["player", "economy", "company"];
+    private static readonly string[] ProjectionBronzeUnitTypes =
+    [
+        "player",
+        "economy",
+        "company",
+        "garage",
+        "driver",
+        "driver_ai",
+        "driver_player",
+        "vehicle",
+        "truck",
+        "trailer",
+        "job",
+        "delivery_log",
+        "delivery_log_entry",
+        "profit_log",
+        "profit_log_entry",
+        "trailer_def",
+        "trailer_definition",
+        "trailer_utilization_log",
+        "trailer_utilization_log_entry",
+        "vehicle_accessory",
+        "vehicle_addon_accessory",
+        "vehicle_wheel_accessory",
+        "vehicle_paint_job_accessory"
+    ];
     private readonly SiiSaveTextDecoder _decoder = new();
     private readonly string _rootPath = LocalPath.Normalize(rootPath);
+
+    internal static Action<string>? BronzeUnitReadObserver { get; set; }
 
     public async Task<IReadOnlyList<SaveSnapshot>> ReadAllAsync(
         CancellationToken cancellationToken,
@@ -215,11 +244,13 @@ public sealed class SqliteMedallionSaveSnapshotSource(
         {
             cancellationToken.ThrowIfCancellationRequested();
             var metadata = ReadFastFileMetadata(path);
-            var cached = await TryReadCachedSnapshotAsync(connection, metadata, cancellationToken);
-            if (cached is not null)
+            var cachedUnitCount = force
+                ? null
+                : await TryReadCachedUnitCountAsync(connection, metadata, cancellationToken);
+            if (cachedUnitCount is not null)
             {
                 completedFiles++;
-                completedUnits += cached.Document.Units.Count;
+                completedUnits += cachedUnitCount.Value;
                 progress?.Report(new SaveLoadProgress(
                     SaveLoadStage.FileLoaded,
                     CompletedFiles: completedFiles,
@@ -228,8 +259,8 @@ public sealed class SqliteMedallionSaveSnapshotSource(
                     TotalUnits: Math.Max(estimatedTotalUnits, completedUnits),
                     Message: $"Loaded {completedFiles:N0} of {paths.Count:N0} save files.",
                     CurrentFile: path,
-                    CurrentFileCompletedUnits: cached.Document.Units.Count,
-                    CurrentFileTotalUnits: cached.Document.Units.Count));
+                    CurrentFileCompletedUnits: cachedUnitCount.Value,
+                    CurrentFileTotalUnits: cachedUnitCount.Value));
                 continue;
             }
 
@@ -279,7 +310,6 @@ public sealed class SqliteMedallionSaveSnapshotSource(
                 CompletedUnits: completedUnits,
                 TotalUnits: Math.Max(estimatedTotalUnits, completedUnits),
                 Message: "Reading bronze snapshots from the statistics database..."));
-            var allSnapshots = await ReadAllBronzeSnapshotsAsync(connection, cancellationToken);
             progress?.Report(new SaveLoadProgress(
                 SaveLoadStage.BuildingStatistics,
                 CompletedFiles: completedFiles,
@@ -287,7 +317,7 @@ public sealed class SqliteMedallionSaveSnapshotSource(
                 CompletedUnits: completedUnits,
                 TotalUnits: Math.Max(estimatedTotalUnits, completedUnits),
                 Message: "Building silver and gold statistics from bronze snapshots..."));
-            var statistics = StatisticsProjection.Build(allSnapshots);
+            var statistics = await BuildStatisticsFromBronzeAsync(connection, cancellationToken);
             await PersistSilverAndGoldAsync(connection, statistics, cancellationToken, progress);
             await SetHighWaterMarkAsync(connection, cancellationToken);
         }
@@ -878,6 +908,36 @@ public sealed class SqliteMedallionSaveSnapshotSource(
             metadata.SourceKey);
     }
 
+    private async Task<int?> TryReadCachedUnitCountAsync(
+        SqliteConnection connection,
+        FileMetadata metadata,
+        CancellationToken cancellationToken)
+    {
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            select count(*)
+            from bronze_save_files
+            where save_id = $save_id
+              and full_path = $full_path
+              and last_write_time_utc = $last_write_time_utc
+              and file_size = $file_size
+              and parse_status = 'parsed'
+            """;
+        Add(command, "$save_id", metadata.SaveId);
+        Add(command, "$full_path", metadata.FullPath);
+        Add(command, "$last_write_time_utc", FormatUtc(metadata.LastWriteTimeUtc));
+        Add(command, "$file_size", metadata.FileSize);
+
+        var count = (long)(await command.ExecuteScalarAsync(cancellationToken) ?? 0L);
+        if (count == 0)
+        {
+            return null;
+        }
+
+        await UpdateCachedFileMetadataAsync(connection, metadata, cancellationToken);
+        return await CountBronzeUnitsAsync(connection, metadata.SaveId, cancellationToken);
+    }
+
     private async Task<SaveSnapshot?> TryIngestSnapshotAsync(
         SqliteConnection connection,
         FileMetadata metadata,
@@ -1250,21 +1310,36 @@ public sealed class SqliteMedallionSaveSnapshotSource(
     private static async Task<SiiDocument> ReadBronzeDocumentAsync(
         SqliteConnection connection,
         string saveId,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        IReadOnlyList<string>? includedUnitTypes = null)
     {
         var units = new List<SiiUnit>();
         await using var command = connection.CreateCommand();
-        command.CommandText = """
+        command.CommandText = includedUnitTypes is null ? """
             select unit_type, unit_id, scalar_values_json, array_values_json
             from bronze_sii_units
             where save_id = $save_id
             order by unit_ordinal
+            """ : $"""
+            select unit_type, unit_id, scalar_values_json, array_values_json
+            from bronze_sii_units
+            where save_id = $save_id
+              and unit_type in ({string.Join(", ", includedUnitTypes.Select((_, index) => $"$unit_type_{index}"))})
+            order by unit_ordinal
             """;
         Add(command, "$save_id", saveId);
+        if (includedUnitTypes is not null)
+        {
+            for (var i = 0; i < includedUnitTypes.Count; i++)
+            {
+                Add(command, $"$unit_type_{i}", includedUnitTypes[i]);
+            }
+        }
 
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken))
         {
+            BronzeUnitReadObserver?.Invoke(reader.GetString(0));
             var values = JsonSerializer.Deserialize<Dictionary<string, string>>(reader.GetString(2), JsonOptions)
                 ?? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             var arrays = JsonSerializer.Deserialize<Dictionary<string, Dictionary<string, string>>>(reader.GetString(3), JsonOptions)
@@ -1281,6 +1356,17 @@ public sealed class SqliteMedallionSaveSnapshotSource(
         }
 
         return new SiiDocument(units);
+    }
+
+    private static async Task<int> CountBronzeUnitsAsync(
+        SqliteConnection connection,
+        string saveId,
+        CancellationToken cancellationToken)
+    {
+        await using var command = connection.CreateCommand();
+        command.CommandText = "select count(*) from bronze_sii_units where save_id = $save_id";
+        Add(command, "$save_id", saveId);
+        return Convert.ToInt32(await command.ExecuteScalarAsync(cancellationToken) ?? 0);
     }
 
     private static async Task<DateTime?> GetHighWaterMarkAsync(
@@ -1350,6 +1436,90 @@ public sealed class SqliteMedallionSaveSnapshotSource(
             snapshots.Add(new SaveSnapshot(fullPath, lastWriteTimeUtc, document, sourceKey));
         }
         return snapshots;
+    }
+
+    private static async Task<AtsStatistics> BuildStatisticsFromBronzeAsync(
+        SqliteConnection connection,
+        CancellationToken cancellationToken)
+    {
+        var rows = await ReadBronzeSnapshotRowsAsync(connection, cancellationToken);
+        var groups = new Dictionary<string, List<(string SaveId, string? SourceKey, string FullPath, DateTime LastWriteTimeUtc)>>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var row in rows)
+        {
+            var identityDocument = await ReadBronzeDocumentAsync(
+                connection,
+                row.SaveId,
+                cancellationToken,
+                CompanyIdentityBronzeUnitTypes);
+            var identitySnapshot = new SaveSnapshot(row.FullPath, row.LastWriteTimeUtc, identityDocument, row.SourceKey);
+            var companyKey = StatisticsProjection.GetCompanyKey(identitySnapshot);
+            if (!groups.TryGetValue(companyKey, out var group))
+            {
+                group = [];
+                groups.Add(companyKey, group);
+            }
+
+            group.Add(row);
+        }
+
+        if (groups.Count == 0)
+        {
+            return new AtsStatistics(null, []);
+        }
+
+        var companies = new List<CompanyStatistics>(groups.Count);
+        DateTimeOffset? latestSave = null;
+        foreach (var group in groups.Values)
+        {
+            var snapshots = new List<SaveSnapshot>(group.Count);
+            foreach (var row in group.OrderByDescending(item => item.LastWriteTimeUtc))
+            {
+                var document = await ReadBronzeDocumentAsync(
+                    connection,
+                    row.SaveId,
+                    cancellationToken,
+                    ProjectionBronzeUnitTypes);
+                snapshots.Add(new SaveSnapshot(row.FullPath, row.LastWriteTimeUtc, document, row.SourceKey));
+                latestSave = latestSave is null || row.LastWriteTimeUtc > latestSave
+                    ? row.LastWriteTimeUtc
+                    : latestSave;
+            }
+
+            companies.Add(StatisticsProjection.BuildCompany(snapshots));
+        }
+
+        return new AtsStatistics(
+            latestSave,
+            companies
+                .OrderByDescending(company => company.Garages.Sum(garage => garage.Profit))
+                .ThenBy(company => company.DisplayName, StringComparer.OrdinalIgnoreCase)
+                .ToList());
+    }
+
+    private static async Task<List<(string SaveId, string? SourceKey, string FullPath, DateTime LastWriteTimeUtc)>> ReadBronzeSnapshotRowsAsync(
+        SqliteConnection connection,
+        CancellationToken cancellationToken)
+    {
+        var rows = new List<(string SaveId, string? SourceKey, string FullPath, DateTime LastWriteTimeUtc)>();
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            select save_id, source_key, full_path, last_write_time_utc
+            from bronze_save_files
+            where parse_status = 'parsed'
+            order by last_write_time_utc desc
+            """;
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            rows.Add((
+                reader.GetString(0),
+                GetNullableString(reader, 1),
+                reader.GetString(2),
+                DateTime.Parse(reader.GetString(3), null, System.Globalization.DateTimeStyles.RoundtripKind)));
+        }
+
+        return rows;
     }
 
     private static async Task PersistSilverAndGoldAsync(
