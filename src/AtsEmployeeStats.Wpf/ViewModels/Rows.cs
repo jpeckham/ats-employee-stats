@@ -149,6 +149,14 @@ internal static class TableColumns
         new("Profit/Mile", nameof(GridRowViewModel.Secondary), nameof(GridRowViewModel.SecondarySort))
     ];
 
+    public static IReadOnlyList<TableColumnViewModel> RoutesFor(CompanyDto company) =>
+        [
+            new("Route", nameof(GridRowViewModel.Name), Width: 2),
+            new("Profit", nameof(GridRowViewModel.Profit), nameof(GridRowViewModel.ProfitSort)),
+            new("Jobs", nameof(GridRowViewModel.Detail), nameof(GridRowViewModel.DetailSort)),
+            new(RowFormatting.IsEts2(company.Id) ? "Profit/Kilometer" : "Profit/Mile", nameof(GridRowViewModel.Secondary), nameof(GridRowViewModel.SecondarySort))
+        ];
+
     public static readonly IReadOnlyList<TableColumnViewModel> Cities =
     [
         new("City", nameof(GridRowViewModel.Name), Width: 2),
@@ -176,9 +184,12 @@ internal static class RowFormatting
         if (value == 0)
             return "-";
 
-        var unit = companyId.StartsWith("ets2-", StringComparison.OrdinalIgnoreCase) ? "km" : "mi";
+        var unit = IsEts2(companyId) ? "km" : "mi";
         return string.Create(CultureInfo.InvariantCulture, $"{currencySymbol}{value:0.00}/{unit}");
     }
+
+    public static bool IsEts2(string companyId) =>
+        companyId.StartsWith("ets2-", StringComparison.OrdinalIgnoreCase);
 
     public static string Value(string? value) =>
         string.IsNullOrWhiteSpace(value) ? "-" : value;

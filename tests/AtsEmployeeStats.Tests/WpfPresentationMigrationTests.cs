@@ -500,6 +500,22 @@ public sealed class WpfPresentationMigrationTests
     }
 
     [Fact]
+    public void Wpf_route_columns_use_game_specific_distance_unit()
+    {
+        var atsCompany = CompanyWithRoute("ats-company", "$");
+        var etsCompany = CompanyWithRoute("ets2-company", "€");
+
+        var atsRoutesTab = new Wpf.ViewModels.CityDetailViewModel(atsCompany, atsCompany.Cities!.Single())
+            .Tabs.Single(tab => tab.Title == "Routes");
+        var etsRoutesTab = new Wpf.ViewModels.CityDetailViewModel(etsCompany, etsCompany.Cities!.Single())
+            .Tabs.Single(tab => tab.Title == "Routes");
+
+        Assert.Contains(atsRoutesTab.Columns, column => column.Header == "Profit/Mile");
+        Assert.Contains(etsRoutesTab.Columns, column => column.Header == "Profit/Kilometer");
+        Assert.Equal("€10.00/km", etsRoutesTab.Rows.Single().Secondary);
+    }
+
+    [Fact]
     public void Wpf_trailer_rows_do_not_show_nameless_type_identifiers()
     {
         Assert.Contains(Wpf.ViewModels.TableColumns.Trailers, column => column.Header == "Body" && column.BindingPath == nameof(Wpf.ViewModels.GridRowViewModel.Body));
@@ -637,6 +653,28 @@ public sealed class WpfPresentationMigrationTests
             RecentDriverJobs:
             [
                 new("job.1", "driver.alice", null, "Cargo", "a", "b", profit, 0, profit, distance, 1)
+            ],
+            CurrencySymbol: currencySymbol);
+
+    private static AtsEmployeeStats.Contracts.CompanyDto CompanyWithRoute(
+        string companyId,
+        string currencySymbol) =>
+        new(
+            companyId,
+            "Company",
+            0,
+            Garages: [],
+            Drivers: [],
+            Trucks: [],
+            Missions: [],
+            TrailerTypes: [],
+            Cities:
+            [
+                new("phoenix", "Phoenix", true, true, 1, 5000, 0, 5000, 0)
+            ],
+            Routes:
+            [
+                new("phoenix", "denver", 5000, 2, 10m, 0)
             ],
             CurrencySymbol: currencySymbol);
 

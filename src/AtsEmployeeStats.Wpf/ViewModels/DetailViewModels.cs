@@ -176,7 +176,7 @@ public sealed class CityDetailViewModel : EntityDetailViewModel
             ProfitSort = route.Profit,
             DetailSort = route.JobCount,
             SecondarySort = route.ProfitPerMile
-        }), TableColumns.Routes));
+        }), TableColumns.RoutesFor(company)));
     }
 }
 
