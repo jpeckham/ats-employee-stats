@@ -186,7 +186,8 @@ public static class StatisticsDashboardMapper
             mission.TimestampDay,
             mission.TrailerId,
             mission.GarageId,
-            mission.TrailerLicensePlate));
+            mission.TrailerLicensePlate,
+            mission.Distance));
 
         var routeDtos = BuildRouteDtos(filteredMissions);
         var cityDtos = BuildCityDtos(company.Cities, filteredMissions, routeDtos, playerDriverIds);
@@ -298,7 +299,10 @@ public static class StatisticsDashboardMapper
             .GroupBy(mission => (Origin: NormalizeCityId(mission.SourceCity)!, Destination: NormalizeCityId(mission.TargetCity)!))
             .ToDictionary(
                 group => group.Key,
-                group => (Profit: group.Sum(mission => mission.Profit), JobCount: group.Count()));
+                group => (
+                    Profit: group.Sum(mission => mission.Profit),
+                    JobCount: group.Count(),
+                    Distance: group.Sum(mission => mission.Distance.GetValueOrDefault())));
 
         return directedRoutes
             .Select(route =>
@@ -309,7 +313,9 @@ public static class StatisticsDashboardMapper
                     route.Key.Destination,
                     route.Value.Profit,
                     route.Value.JobCount,
-                    ProfitPerMile: 0,
+                    ProfitPerMile: route.Value.Distance > 0
+                        ? Math.Round(route.Value.Profit / (decimal)route.Value.Distance, 2, MidpointRounding.AwayFromZero)
+                        : 0,
                     ReturnCoverageRatio: reverse.JobCount == 0 ? 0 : Math.Min(route.Value.JobCount, reverse.JobCount) / (decimal)Math.Max(route.Value.JobCount, reverse.JobCount));
             })
             .OrderBy(route => route.OriginCityId, StringComparer.OrdinalIgnoreCase)

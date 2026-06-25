@@ -349,4 +349,33 @@ public sealed class StatisticsDashboardMapperTests
         Assert.Equal(1, company.ProfitTrend.WindowDays);
         Assert.Empty(company.ProfitTrend.Points);
     }
+
+    [Fact]
+    public void ToDashboardDto_computes_route_profit_per_mile_from_mission_distance()
+    {
+        var statistics = new AtsStatistics(
+            new DateTimeOffset(2026, 6, 24, 12, 0, 0, TimeSpan.Zero),
+            [
+                new CompanyStatistics(
+                    "desert-line",
+                    "Desert Line",
+                    new DateTimeOffset(2026, 6, 24, 12, 0, 0, TimeSpan.Zero),
+                    [],
+                    [],
+                    [],
+                    [
+                        new MissionStatistic("job.1", null, null, null, "reefer", "medicine", "phoenix", "denver", 3000, Distance: 300),
+                        new MissionStatistic("job.2", null, null, null, "flatbed", "steel", "phoenix", "denver", 2000, Distance: 200),
+                        new MissionStatistic("job.3", null, null, null, "flatbed", "steel", "denver", "phoenix", 1500, Distance: 300)
+                    ],
+                    [])
+            ]);
+
+        var company = Assert.Single(StatisticsDashboardMapper.ToDashboardDto(statistics).Companies);
+
+        var outbound = Assert.Single(company.Routes!, route => route.OriginCityId == "phoenix" && route.DestinationCityId == "denver");
+        Assert.Equal(10m, outbound.ProfitPerMile);
+        var inbound = Assert.Single(company.Routes!, route => route.OriginCityId == "denver" && route.DestinationCityId == "phoenix");
+        Assert.Equal(5m, inbound.ProfitPerMile);
+    }
 }

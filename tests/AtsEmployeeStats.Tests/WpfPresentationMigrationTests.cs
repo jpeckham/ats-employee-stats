@@ -426,7 +426,7 @@ public sealed class WpfPresentationMigrationTests
             Wpf.ViewModels.TableColumns.Routes.Single(column => column.Header == "Jobs").SortMemberPath);
         Assert.Equal(
             nameof(Wpf.ViewModels.GridRowViewModel.SecondarySort),
-            Wpf.ViewModels.TableColumns.Routes.Single(column => column.Header == "$/Mile").SortMemberPath);
+            Wpf.ViewModels.TableColumns.Routes.Single(column => column.Header == "Profit/Mile").SortMemberPath);
 
         var company = new AtsEmployeeStats.Contracts.CompanyDto(
             "company",
@@ -464,6 +464,39 @@ public sealed class WpfPresentationMigrationTests
         Assert.Equal([2m, 10m], company.Drivers.Select(driver => Wpf.ViewModels.Rows.Driver(company, driver).SecondarySort));
         Assert.Equal([2m, 10m], company.Missions.Select(job => Wpf.ViewModels.Rows.Job(company, job).SecondarySort));
         Assert.Equal([2m, 10m], company.Trailers!.Select(trailer => Wpf.ViewModels.Rows.Trailer(company, trailer).SecondarySort));
+    }
+
+    [Fact]
+    public void Wpf_route_rows_show_profit_per_mile_with_currency_in_value()
+    {
+        Assert.Contains(Wpf.ViewModels.TableColumns.Routes, column => column.Header == "Profit/Mile");
+        Assert.DoesNotContain(Wpf.ViewModels.TableColumns.Routes, column => column.Header == "$/Mile");
+
+        var company = new AtsEmployeeStats.Contracts.CompanyDto(
+            "company",
+            "Company",
+            0,
+            Garages: [],
+            Drivers: [],
+            Trucks: [],
+            Missions: [],
+            TrailerTypes: [],
+            Cities:
+            [
+                new("phoenix", "Phoenix", true, true, 1, 5000, 0, 5000, 0)
+            ],
+            Routes:
+            [
+                new("phoenix", "denver", 5000, 2, 10m, 0)
+            ],
+            CurrencySymbol: "$");
+
+        var row = new Wpf.ViewModels.CityDetailViewModel(company, company.Cities!.Single())
+            .Tabs.Single(tab => tab.Title == "Routes")
+            .Rows.Single();
+
+        Assert.Equal("$10.00/mi", row.Secondary);
+        Assert.Equal(10m, row.SecondarySort);
     }
 
     [Fact]

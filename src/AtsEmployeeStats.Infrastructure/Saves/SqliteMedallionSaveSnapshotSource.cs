@@ -18,6 +18,7 @@ public sealed class SqliteMedallionSaveSnapshotSource(
     string? sourceKeyPrefix = null) : ISaveSnapshotSource, IStatisticsQuerySource, IStatisticsIngestor
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+    private const string ProjectionVersion = "2026-06-24-route-distance-v1";
     private static readonly string[] CompanyIdentityBronzeUnitTypes = ["player", "economy", "company"];
     private static readonly string[] ProjectionBronzeUnitTypes =
     [
@@ -301,7 +302,8 @@ public sealed class SqliteMedallionSaveSnapshotSource(
         }
 
         var goldHasData = await GoldHasDataAsync(connection, cancellationToken);
-        if (anyIngested || !goldHasData || force)
+        var projectionIsCurrent = await ProjectionVersionIsCurrentAsync(connection, cancellationToken);
+        if (anyIngested || !goldHasData || force || !projectionIsCurrent)
         {
             progress?.Report(new SaveLoadProgress(
                 SaveLoadStage.ReadingBronze,
@@ -319,6 +321,7 @@ public sealed class SqliteMedallionSaveSnapshotSource(
                 Message: "Building silver and gold statistics from bronze snapshots..."));
             var statistics = await BuildStatisticsFromBronzeAsync(connection, cancellationToken);
             await PersistSilverAndGoldAsync(connection, statistics, cancellationToken, progress);
+            await SetProjectionVersionAsync(connection, cancellationToken);
             await SetHighWaterMarkAsync(connection, cancellationToken);
         }
 
@@ -470,6 +473,7 @@ public sealed class SqliteMedallionSaveSnapshotSource(
                 profit integer not null,
                 timestamp_day integer,
                 garage_id text,
+                distance integer,
                 primary key (company_id, job_id)
             );
 
@@ -600,6 +604,7 @@ public sealed class SqliteMedallionSaveSnapshotSource(
                 garage_id text,
                 trailer_pk integer,
                 trailer_license_plate text,
+                distance integer,
                 primary key (company_id, job_id)
             );
 
@@ -710,7 +715,9 @@ public sealed class SqliteMedallionSaveSnapshotSource(
         await EnsureColumnAsync(connection, "silver_trucks", "model_name", "text", cancellationToken);
         await EnsureColumnAsync(connection, "silver_trucks", "definition_path", "text", cancellationToken);
         await EnsureColumnAsync(connection, "silver_jobs", "timestamp_day", "integer", cancellationToken);
+        await EnsureColumnAsync(connection, "silver_jobs", "distance", "integer", cancellationToken);
         await EnsureColumnAsync(connection, "gold_job_details", "timestamp_day", "integer", cancellationToken);
+        await EnsureColumnAsync(connection, "gold_job_details", "distance", "integer", cancellationToken);
         await EnsureColumnAsync(connection, "gold_job_details", "trailer_id", "text", cancellationToken);
         await EnsureColumnAsync(connection, "silver_trailers", "body_type", "text", cancellationToken);
         await EnsureColumnAsync(connection, "silver_trailers", "is_articulated", "integer", cancellationToken);
@@ -1398,6 +1405,30 @@ public sealed class SqliteMedallionSaveSnapshotSource(
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
+    private static async Task<bool> ProjectionVersionIsCurrentAsync(
+        SqliteConnection connection,
+        CancellationToken cancellationToken)
+    {
+        await using var command = connection.CreateCommand();
+        command.CommandText = "select value from app_metadata where key = 'projection_version'";
+        var value = await command.ExecuteScalarAsync(cancellationToken) as string;
+        return string.Equals(value, ProjectionVersion, StringComparison.Ordinal);
+    }
+
+    private static async Task SetProjectionVersionAsync(
+        SqliteConnection connection,
+        CancellationToken cancellationToken)
+    {
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            insert into app_metadata (key, value)
+            values ('projection_version', $projection_version)
+            on conflict(key) do update set value = excluded.value
+            """;
+        Add(command, "$projection_version", ProjectionVersion);
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
     private static async Task<bool> GoldHasDataAsync(
         SqliteConnection connection,
         CancellationToken cancellationToken)
@@ -1712,10 +1743,10 @@ public sealed class SqliteMedallionSaveSnapshotSource(
                     connection,
                     """
                     insert into silver_jobs (
-                        company_id, job_id, driver_id, truck_id, trailer_id, trailer_pk, trailer_type, cargo, origin_city, destination_city, profit, timestamp_day, garage_id
+                        company_id, job_id, driver_id, truck_id, trailer_id, trailer_pk, trailer_type, cargo, origin_city, destination_city, profit, timestamp_day, garage_id, distance
                     )
                     values (
-                        $company_id, $job_id, $driver_id, $truck_id, $trailer_id, $trailer_pk, $trailer_type, $cargo, $origin_city, $destination_city, $profit, $timestamp_day, $garage_id
+                        $company_id, $job_id, $driver_id, $truck_id, $trailer_id, $trailer_pk, $trailer_type, $cargo, $origin_city, $destination_city, $profit, $timestamp_day, $garage_id, $distance
                     )
                     """,
                     cancellationToken,
@@ -1731,7 +1762,8 @@ public sealed class SqliteMedallionSaveSnapshotSource(
                     ("$destination_city", mission.TargetCity),
                     ("$profit", mission.Profit),
                     ("$timestamp_day", mission.TimestampDay),
-                    ("$garage_id", mission.GarageId));
+                    ("$garage_id", mission.GarageId),
+                    ("$distance", mission.Distance));
             }
 
             foreach (var job in company.RecentDriverJobs)
@@ -2222,10 +2254,10 @@ public sealed class SqliteMedallionSaveSnapshotSource(
                 connection,
                 """
                 insert into gold_job_details (
-                    company_id, job_id, driver_id, job_type, origin_city, destination_city, cargo, trailer_type, truck_id, profit, timestamp_day, trailer_id, garage_id, trailer_pk, trailer_license_plate
+                    company_id, job_id, driver_id, job_type, origin_city, destination_city, cargo, trailer_type, truck_id, profit, timestamp_day, trailer_id, garage_id, trailer_pk, trailer_license_plate, distance
                 )
                 values (
-                    $company_id, $job_id, $driver_id, $job_type, $origin_city, $destination_city, $cargo, $trailer_type, $truck_id, $profit, $timestamp_day, $trailer_id, $garage_id, $trailer_pk, $trailer_license_plate
+                    $company_id, $job_id, $driver_id, $job_type, $origin_city, $destination_city, $cargo, $trailer_type, $truck_id, $profit, $timestamp_day, $trailer_id, $garage_id, $trailer_pk, $trailer_license_plate, $distance
                 )
                 """,
                 cancellationToken,
@@ -2243,7 +2275,8 @@ public sealed class SqliteMedallionSaveSnapshotSource(
                 ("$trailer_id", mission.TrailerId),
                 ("$garage_id", mission.GarageId),
                 ("$trailer_pk", trailerPk == 0 ? (object)DBNull.Value : trailerPk),
-                ("$trailer_license_plate", mission.TrailerLicensePlate));
+                ("$trailer_license_plate", mission.TrailerLicensePlate),
+                ("$distance", mission.Distance));
         }
 
         foreach (var group in company.RecentDriverJobs.GroupBy(job => job.DriverId, StringComparer.OrdinalIgnoreCase))
@@ -2647,7 +2680,7 @@ public sealed class SqliteMedallionSaveSnapshotSource(
         var values = new List<MissionStatistic>();
         await using var command = connection.CreateCommand();
         command.CommandText = """
-            select job_id, driver_id, truck_id, trailer_type, cargo, origin_city, destination_city, profit, timestamp_day, trailer_id, garage_id, trailer_license_plate
+            select job_id, driver_id, truck_id, trailer_type, cargo, origin_city, destination_city, profit, timestamp_day, trailer_id, garage_id, trailer_license_plate, distance
             from gold_job_details
             where company_id = $company_id
             order by profit desc, job_id
@@ -2668,7 +2701,8 @@ public sealed class SqliteMedallionSaveSnapshotSource(
                 reader.GetInt64(7),
                 GetNullableInt(reader, 8),
                 GarageId: GetNullableString(reader, 10),
-                TrailerLicensePlate: GetNullableString(reader, 11)));
+                TrailerLicensePlate: GetNullableString(reader, 11),
+                Distance: GetNullableInt(reader, 12)));
         }
 
         return values;

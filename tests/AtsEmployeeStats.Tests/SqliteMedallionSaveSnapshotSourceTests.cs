@@ -421,7 +421,7 @@ public sealed class SqliteMedallionSaveSnapshotSourceTests : IDisposable
         var company = Assert.Single(statistics.Companies);
         Assert.Contains(company.Cities, city => city.Id == "phoenix" && city.HasOwnedGarage && city.BidirectionalProfit == 5500);
         Assert.Contains(company.Cities, city => city.Id == "denver" && city.IsGarageEligible && city.ExpansionScore > 0);
-        Assert.Contains(company.Routes, route => route.OriginCityId == "phoenix" && route.DestinationCityId == "denver" && route.Profit == 3000);
+        Assert.Contains(company.Routes, route => route.OriginCityId == "phoenix" && route.DestinationCityId == "denver" && route.Profit == 3000 && route.ProfitPerMile == 10m);
         Assert.Contains(company.Trailers, trailer => trailer.Id == "trailer.reefer.1" && trailer.Profit == 5500 && trailer.JobCount == 2);
         Assert.Contains(company.ProfitTrends, point => point.EntityKind == "company" && point.GameDay == 200 && point.Profit == 3000);
 
@@ -447,15 +447,26 @@ public sealed class SqliteMedallionSaveSnapshotSourceTests : IDisposable
                     reader.GetInt64(6))));
 
         Assert.Equal(
-            ("phoenix", "denver", 3000L, 1),
-            await QuerySingleAsync<(string, string, long, int)>(
+            ("phoenix", "denver", 3000L, 1, 10m),
+            await QuerySingleAsync<(string, string, long, int, decimal)>(
                 connection,
                 """
-                select origin_city_id, destination_city_id, profit, job_count
+                select origin_city_id, destination_city_id, profit, job_count, profit_per_mile
                 from gold_route_profitability
                 where origin_city_id = 'phoenix'
                 """,
-                reader => (reader.GetString(0), reader.GetString(1), reader.GetInt64(2), reader.GetInt32(3))));
+                reader => (reader.GetString(0), reader.GetString(1), reader.GetInt64(2), reader.GetInt32(3), reader.GetDecimal(4))));
+
+        Assert.Equal(
+            300,
+            await QuerySingleAsync<int>(
+                connection,
+                """
+                select distance
+                from gold_job_details
+                where job_id = 'job.outbound'
+                """,
+                reader => reader.GetInt32(0)));
 
         Assert.Equal(
             ("trailer.reefer.1", "trailer_def.scs.box.reefer", "trailer_def.scs.box.reefer", 5500L, 2),
@@ -1148,6 +1159,7 @@ public sealed class SqliteMedallionSaveSnapshotSourceTests : IDisposable
               source_city: phoenix
               target_city: denver
               timestamp_day: 200
+              distance: 300
             }
 
             job : job.return {
@@ -1159,6 +1171,7 @@ public sealed class SqliteMedallionSaveSnapshotSourceTests : IDisposable
               source_city: denver
               target_city: phoenix
               timestamp_day: 201
+              distance: 500
             }
             }
             """);

@@ -537,7 +537,8 @@ public static partial class StatisticsProjection
             sourceCity,
             targetCity,
             profit,
-            FirstIntValue(job, "timestamp_day"));
+            FirstIntValue(job, "timestamp_day"),
+            Distance: FirstIntValue(job, "distance"));
     }
 
     private static MissionStatistic BuildDeliveryLogMission(SiiUnit entry)
@@ -566,7 +567,8 @@ public static partial class StatisticsProjection
             SourceCity: sourceCity,
             TargetCity: targetCity,
             Profit: profit,
-            TimestampDay: FirstIntValue(entry, "timestamp_day"));
+            TimestampDay: FirstIntValue(entry, "timestamp_day"),
+            Distance: FirstIntValue(entry, "distance"));
     }
 
     private static IReadOnlyList<TrailerStatistic> BuildTrailerStats(
@@ -656,7 +658,10 @@ public static partial class StatisticsProjection
             .GroupBy(mission => (Origin: mission.SourceCity!, Destination: mission.TargetCity!), new RouteKeyComparer())
             .ToDictionary(
                 group => group.Key,
-                group => (Profit: group.Sum(mission => mission.Profit), JobCount: group.Count()),
+                group => (
+                    Profit: group.Sum(mission => mission.Profit),
+                    JobCount: group.Count(),
+                    Distance: group.Sum(mission => mission.Distance.GetValueOrDefault())),
                 new RouteKeyComparer());
 
         return directedRoutes
@@ -668,7 +673,9 @@ public static partial class StatisticsProjection
                     route.Key.Destination,
                     route.Value.Profit,
                     route.Value.JobCount,
-                    ProfitPerMile: 0,
+                    ProfitPerMile: route.Value.Distance > 0
+                        ? Math.Round(route.Value.Profit / (decimal)route.Value.Distance, 2, MidpointRounding.AwayFromZero)
+                        : 0,
                     ReturnCoverageRatio: reverse.JobCount == 0 ? 0 : Math.Min(route.Value.JobCount, reverse.JobCount) / (decimal)Math.Max(route.Value.JobCount, reverse.JobCount));
             })
             .OrderBy(route => route.OriginCityId, StringComparer.OrdinalIgnoreCase)

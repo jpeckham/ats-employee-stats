@@ -70,7 +70,8 @@ public sealed record MissionDto(
     int? TimestampDay = null,
     string? TrailerId = null,
     string? GarageId = null,
-    string? TrailerLicensePlate = null);
+    string? TrailerLicensePlate = null,
+    int? Distance = null);
 
 public sealed record DriverRecentJobDto(
     string Id,

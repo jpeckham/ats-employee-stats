@@ -339,7 +339,7 @@ internal static class OverviewBuilderHelpers
                     relatedCity?.DisplayName ?? relatedCityId,
                     RowFormatting.Money(route.Profit, company.CurrencySymbol),
                     $"{route.JobCount:N0} jobs",
-                    $"{route.ProfitPerMile:0.00}/mi",
+                    RowFormatting.MoneyPerDistance(route.ProfitPerMile, company.Id, company.CurrencySymbol),
                     [])
                 {
                     Target = new(ExplorerNodeKind.City, company.Id, relatedCityId),

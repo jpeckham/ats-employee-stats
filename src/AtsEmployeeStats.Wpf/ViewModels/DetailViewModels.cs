@@ -171,7 +171,7 @@ public sealed class CityDetailViewModel : EntityDetailViewModel
         Metrics.Add(new("Player Origin", city.PlayerOriginScore.ToString("0.##")));
         Tabs.Add(new("Overview", CityOverviewBuilder.Build(company, city)));
         Tabs.Add(new("Jobs", company.Missions.Where(job => Same(job.SourceCity, city.Id) || Same(job.TargetCity, city.Id)).Select(job => Rows.Job(company, job)), TableColumns.Jobs));
-        Tabs.Add(new("Routes", (company.Routes ?? []).Where(route => Same(route.OriginCityId, city.Id) || Same(route.DestinationCityId, city.Id)).Select(route => new GridRowViewModel($"{route.OriginCityId} to {route.DestinationCityId}", RowFormatting.Money(route.Profit, company.CurrencySymbol), $"{route.JobCount:N0} jobs", $"{route.ProfitPerMile:0.00}/mi", [])
+        Tabs.Add(new("Routes", (company.Routes ?? []).Where(route => Same(route.OriginCityId, city.Id) || Same(route.DestinationCityId, city.Id)).Select(route => new GridRowViewModel($"{route.OriginCityId} to {route.DestinationCityId}", RowFormatting.Money(route.Profit, company.CurrencySymbol), $"{route.JobCount:N0} jobs", RowFormatting.MoneyPerDistance(route.ProfitPerMile, company.Id, company.CurrencySymbol), [])
         {
             ProfitSort = route.Profit,
             DetailSort = route.JobCount,
@@ -258,8 +258,7 @@ internal static class Rows
             return ("-", 0);
 
         var value = Math.Round(driver.Profit / (decimal)distance, 2, MidpointRounding.AwayFromZero);
-        var unit = company.Id.StartsWith("ets2-", StringComparison.OrdinalIgnoreCase) ? "km" : "mi";
-        return ($"{company.CurrencySymbol}{value:0.00}/{unit}", value);
+        return (RowFormatting.MoneyPerDistance(value, company.Id, company.CurrencySymbol), value);
     }
 }
 

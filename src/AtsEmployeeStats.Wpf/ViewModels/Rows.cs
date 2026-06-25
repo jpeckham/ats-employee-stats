@@ -146,7 +146,7 @@ internal static class TableColumns
         new("Route", nameof(GridRowViewModel.Name), Width: 2),
         new("Profit", nameof(GridRowViewModel.Profit), nameof(GridRowViewModel.ProfitSort)),
         new("Jobs", nameof(GridRowViewModel.Detail), nameof(GridRowViewModel.DetailSort)),
-        new("$/Mile", nameof(GridRowViewModel.Secondary), nameof(GridRowViewModel.SecondarySort))
+        new("Profit/Mile", nameof(GridRowViewModel.Secondary), nameof(GridRowViewModel.SecondarySort))
     ];
 
     public static readonly IReadOnlyList<TableColumnViewModel> Cities =
@@ -170,6 +170,15 @@ internal static class RowFormatting
 
     public static string Count(int value) =>
         value.ToString("N0", CultureInfo.CurrentCulture);
+
+    public static string MoneyPerDistance(decimal value, string companyId, string currencySymbol)
+    {
+        if (value == 0)
+            return "-";
+
+        var unit = companyId.StartsWith("ets2-", StringComparison.OrdinalIgnoreCase) ? "km" : "mi";
+        return string.Create(CultureInfo.InvariantCulture, $"{currencySymbol}{value:0.00}/{unit}");
+    }
 
     public static string Value(string? value) =>
         string.IsNullOrWhiteSpace(value) ? "-" : value;

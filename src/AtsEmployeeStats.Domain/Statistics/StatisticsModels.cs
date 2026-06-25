@@ -139,7 +139,8 @@ public sealed record MissionStatistic(
     long Profit,
     int? TimestampDay = null,
     string? GarageId = null,
-    string? TrailerLicensePlate = null);
+    string? TrailerLicensePlate = null,
+    int? Distance = null);
 
 public sealed record DriverRecentJobStatistic(
     string Id,
