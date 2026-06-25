@@ -428,3 +428,5 @@ FodyWeavers.xsd
 *.msm
 *.msp
 dist/*.zip
+.agents/**/*
+skills-lock.json
