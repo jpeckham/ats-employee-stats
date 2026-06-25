@@ -190,13 +190,18 @@ internal static class Rows
             SecondarySort = garage.ProfitPerDay
         };
 
-    public static GridRowViewModel Driver(CompanyDto company, DriverDto driver) =>
-        new(driver.DisplayName, RowFormatting.Money(driver.Profit, company.CurrencySymbol), $"{GarageName(company, driver.GarageId)} / {TruckName(company, driver.TruckId)}", $"{driver.JobCount:N0} jobs", RowFormatting.Trend(driver.Trend), driver)
+    public static GridRowViewModel Driver(CompanyDto company, DriverDto driver)
+    {
+        var profitPerDistance = ProfitPerDistance(company, driver);
+        return new(driver.DisplayName, RowFormatting.Money(driver.Profit, company.CurrencySymbol), $"{GarageName(company, driver.GarageId)} / {TruckName(company, driver.TruckId)}", $"{driver.JobCount:N0} jobs", RowFormatting.Trend(driver.Trend), driver)
         {
             Target = new(ExplorerNodeKind.Driver, company.Id, driver.Id),
             ProfitSort = driver.Profit,
-            SecondarySort = driver.JobCount
+            SecondarySort = driver.JobCount,
+            ProfitPerDistance = profitPerDistance.Text,
+            ProfitPerDistanceSort = profitPerDistance.Sort
         };
+    }
 
     public static GridRowViewModel Truck(CompanyDto company, TruckDto truck) =>
         new(truck.DisplayName, RowFormatting.Money(truck.Profit, company.CurrencySymbol), $"{GarageName(company, truck.GarageId)} / {DriverName(company, truck.DriverId)}", truck.LicensePlate ?? truck.Id, RowFormatting.Trend(truck.Trend), truck)
@@ -241,6 +246,19 @@ internal static class Rows
             PlayerOrigin = city.PlayerOriginScore.ToString("0.##"),
             PlayerOriginSort = city.PlayerOriginScore
         };
+
+    private static (string Text, decimal Sort) ProfitPerDistance(CompanyDto company, DriverDto driver)
+    {
+        var distance = (company.RecentDriverJobs ?? [])
+            .Where(job => DetailHelpers.Same(job.DriverId, driver.Id) && job.Distance is > 0)
+            .Sum(job => job.Distance!.Value);
+        if (distance == 0)
+            return ("-", 0);
+
+        var value = Math.Round(driver.Profit / (decimal)distance, 2, MidpointRounding.AwayFromZero);
+        var unit = company.Id.StartsWith("ets2-", StringComparison.OrdinalIgnoreCase) ? "km" : "mi";
+        return ($"{company.CurrencySymbol}{value:0.00}/{unit}", value);
+    }
 }
 
 internal static class DetailHelpers

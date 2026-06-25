@@ -467,6 +467,32 @@ public sealed class WpfPresentationMigrationTests
     }
 
     [Fact]
+    public void Wpf_driver_rows_show_profit_per_distance()
+    {
+        Assert.Equal(
+            nameof(Wpf.ViewModels.GridRowViewModel.ProfitPerDistanceSort),
+            Wpf.ViewModels.TableColumns.Drivers.Single(column => column.Header == "Profit/Dist").SortMemberPath);
+
+        var atsCompany = CompanyWithDriverDistance("ats-company", "$", 1000, 200);
+        var atsRow = Wpf.ViewModels.Rows.Driver(atsCompany, atsCompany.Drivers.Single());
+
+        Assert.Equal("$5.00/mi", atsRow.ProfitPerDistance);
+        Assert.Equal(5m, atsRow.ProfitPerDistanceSort);
+
+        var etsCompany = CompanyWithDriverDistance("ets2-company", "€", 1000, 200);
+        var etsRow = Wpf.ViewModels.Rows.Driver(etsCompany, etsCompany.Drivers.Single());
+
+        Assert.Equal("€5.00/km", etsRow.ProfitPerDistance);
+        Assert.Equal(5m, etsRow.ProfitPerDistanceSort);
+
+        var noDistanceCompany = CompanyWithDriverDistance("ats-no-distance", "$", 1000, 0);
+        var noDistanceRow = Wpf.ViewModels.Rows.Driver(noDistanceCompany, noDistanceCompany.Drivers.Single());
+
+        Assert.Equal("-", noDistanceRow.ProfitPerDistance);
+        Assert.Equal(0m, noDistanceRow.ProfitPerDistanceSort);
+    }
+
+    [Fact]
     public void Wpf_preserves_clean_architecture_boundaries()
     {
         var root = FindRepositoryRoot();
@@ -526,6 +552,26 @@ public sealed class WpfPresentationMigrationTests
         var path = Path.Combine([root, .. segments]);
         Assert.True(File.Exists(path), $"Expected file '{path}' to exist.");
     }
+
+    private static AtsEmployeeStats.Contracts.CompanyDto CompanyWithDriverDistance(
+        string companyId,
+        string currencySymbol,
+        long profit,
+        int distance) =>
+        new(
+            companyId,
+            "Company",
+            profit,
+            Garages: [],
+            Drivers: [new("driver.alice", "Alice", profit, 0, null, null, 1)],
+            Trucks: [],
+            Missions: [],
+            TrailerTypes: [],
+            RecentDriverJobs:
+            [
+                new("job.1", "driver.alice", null, "Cargo", "a", "b", profit, 0, profit, distance, 1)
+            ],
+            CurrencySymbol: currencySymbol);
 
     private static string FindRepositoryRoot()
     {
