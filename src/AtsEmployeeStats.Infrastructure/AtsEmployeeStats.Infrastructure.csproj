@@ -8,6 +8,7 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.8" />
     <PackageReference Include="SIIDecryptSharp" Version="1.0.1" />
+    <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="3.0.3" />
     <PackageReference Include="TruckLib.HashFs" Version="0.2.6" />
     <PackageReference Include="zlib-msvc-x64" Version="1.2.11.8900" />
   </ItemGroup>
