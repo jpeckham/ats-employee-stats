@@ -1058,6 +1058,12 @@ public sealed class StatisticsProjectionTests
                   license_plate: "200B-420|texas"
                 }
 
+                trailer_def : trailer_def.scs.box.reefer {
+                  body_type: "refrigerated"
+                  chain_type: single
+                  source_name: trailer_def.scs.box.reefer
+                }
+
                 job : job.outbound {
                   driver: driver.alice
                   truck: truck.alice
@@ -1131,6 +1137,7 @@ public sealed class StatisticsProjectionTests
         var trailer = Assert.Single(company.Trailers);
         Assert.Equal("trailer.reefer.1", trailer.Id);
         Assert.Equal("trailer_def.scs.box.reefer", trailer.TrailerType);
+        Assert.Equal("trailer_def.scs.box.reefer", trailer.DefinitionSourceName);
         Assert.Equal(5500, trailer.Profit);
         // JobCount comes from trailer_utilization_log; no log in this snapshot so it's 0
         Assert.Equal(0, trailer.JobCount);

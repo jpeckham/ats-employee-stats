@@ -714,6 +714,7 @@ public sealed class SqliteMedallionSaveSnapshotSource(
         await EnsureColumnAsync(connection, "gold_job_details", "trailer_id", "text", cancellationToken);
         await EnsureColumnAsync(connection, "silver_trailers", "body_type", "text", cancellationToken);
         await EnsureColumnAsync(connection, "silver_trailers", "is_articulated", "integer", cancellationToken);
+        await EnsureColumnAsync(connection, "silver_trailers", "definition_source_name", "text", cancellationToken);
         await EnsureColumnAsync(connection, "silver_jobs", "garage_id", "text", cancellationToken);
         await EnsureColumnAsync(connection, "gold_job_details", "garage_id", "text", cancellationToken);
         await EnsureColumnAsync(connection, "silver_trailers", "garage_id", "text", cancellationToken);
@@ -803,6 +804,7 @@ public sealed class SqliteMedallionSaveSnapshotSource(
                 job_count integer not null,
                 body_type text,
                 is_articulated integer,
+                definition_source_name text,
                 garage_id text,
                 license_plate text
             )
@@ -1676,8 +1678,8 @@ public sealed class SqliteMedallionSaveSnapshotSource(
                 await ExecuteAsync(
                     connection,
                     """
-                    insert into silver_trailers (company_id, company_pk, trailer_id, trailer_type, profit, job_count, body_type, is_articulated, garage_id, license_plate)
-                    values ($company_id, $company_pk, $trailer_id, $trailer_type, $profit, $job_count, $body_type, $is_articulated, $garage_id, $license_plate)
+                    insert into silver_trailers (company_id, company_pk, trailer_id, trailer_type, profit, job_count, body_type, is_articulated, definition_source_name, garage_id, license_plate)
+                    values ($company_id, $company_pk, $trailer_id, $trailer_type, $profit, $job_count, $body_type, $is_articulated, $definition_source_name, $garage_id, $license_plate)
                     """,
                     cancellationToken,
                     ("$company_id", company.Id),
@@ -1688,6 +1690,7 @@ public sealed class SqliteMedallionSaveSnapshotSource(
                     ("$job_count", jobCount),
                     ("$body_type", trailer.BodyType),
                     ("$is_articulated", trailer.IsArticulated ? 1 : 0),
+                    ("$definition_source_name", trailer.DefinitionSourceName),
                     ("$garage_id", trailer.GarageId),
                     ("$license_plate", trailer.LicensePlate));
             }
@@ -2755,7 +2758,7 @@ public sealed class SqliteMedallionSaveSnapshotSource(
         var values = new List<TrailerStatistic>();
         await using var command = connection.CreateCommand();
         command.CommandText = """
-            select trailer_id, trailer_type, profit, job_count, body_type, is_articulated, garage_id, license_plate
+            select trailer_id, trailer_type, profit, job_count, body_type, is_articulated, garage_id, license_plate, definition_source_name
             from silver_trailers
             where company_id = $company_id
             order by profit desc, trailer_id
@@ -2772,7 +2775,8 @@ public sealed class SqliteMedallionSaveSnapshotSource(
                 IsArticulated: reader.IsDBNull(5) ? false : reader.GetInt32(5) != 0,
                 BodyType: GetNullableString(reader, 4),
                 GarageId: GetNullableString(reader, 6),
-                LicensePlate: GetNullableString(reader, 7)));
+                LicensePlate: GetNullableString(reader, 7),
+                DefinitionSourceName: GetNullableString(reader, 8)));
         }
 
         return values;

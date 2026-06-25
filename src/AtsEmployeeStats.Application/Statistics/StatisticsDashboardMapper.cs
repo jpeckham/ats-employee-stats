@@ -171,7 +171,8 @@ public static class StatisticsDashboardMapper
                 mission => IdEquals(mission.TrailerLicensePlate, trailer.LicensePlate) || IdEquals(mission.TrailerId, trailer.Id),
                 excludePlayerDriver),
             trailer.GarageId,
-            trailer.LicensePlate));
+            trailer.LicensePlate,
+            trailer.DefinitionSourceName));
 
         var missionDtos = filteredMissions.Select(mission => new MissionDto(
             mission.Id,

@@ -593,10 +593,12 @@ public static partial class StatisticsProjection
                 var defId = FirstKnownValue(trailer, "trailer_definition", "trailer_def", "definition") ??
                     trailerTypesByTrailer.GetValueOrDefault(trailer.Id);
                 string? bodyType = null;
+                string? definitionSourceName = null;
                 var isArticulated = false;
                 if (defId is not null && unitsById.TryGetValue(defId, out var trailerDef))
                 {
                     bodyType = FirstKnownValue(trailerDef, "body_type");
+                    definitionSourceName = FirstKnownValue(trailerDef, "source_name");
                     var chainType = FirstKnownValue(trailerDef, "chain_type");
                     isArticulated = StringComparer.OrdinalIgnoreCase.Equals(chainType, "double");
                 }
@@ -613,7 +615,8 @@ public static partial class StatisticsProjection
                     isArticulated,
                     bodyType,
                     garageId,
-                    licensePlate);
+                    licensePlate,
+                    definitionSourceName);
             })
             .Where(trailer => trailer.JobCount > 0 || !StringComparer.OrdinalIgnoreCase.Equals(trailer.TrailerType, "unknown"))
             .OrderByDescending(trailer => trailer.Profit)

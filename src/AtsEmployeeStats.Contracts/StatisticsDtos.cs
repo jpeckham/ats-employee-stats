@@ -100,7 +100,8 @@ public sealed record TrailerDto(
     long ProfitPerDay = 0,
     SparklineDto? Trend = null,
     string? GarageId = null,
-    string? LicensePlate = null);
+    string? LicensePlate = null,
+    string? DefinitionSourceName = null);
 
 public sealed record CityDto(
     string Id,

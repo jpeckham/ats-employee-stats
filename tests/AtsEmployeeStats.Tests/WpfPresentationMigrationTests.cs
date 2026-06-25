@@ -467,6 +467,40 @@ public sealed class WpfPresentationMigrationTests
     }
 
     [Fact]
+    public void Wpf_trailer_rows_do_not_show_nameless_type_identifiers()
+    {
+        Assert.Contains(Wpf.ViewModels.TableColumns.Trailers, column => column.Header == "Body" && column.BindingPath == nameof(Wpf.ViewModels.GridRowViewModel.Body));
+        Assert.Contains(Wpf.ViewModels.TableColumns.Trailers, column => column.Header == "Location" && column.BindingPath == nameof(Wpf.ViewModels.GridRowViewModel.Location));
+        Assert.DoesNotContain(Wpf.ViewModels.TableColumns.Trailers, column => column.Header == "Body / Location");
+
+        var company = new AtsEmployeeStats.Contracts.CompanyDto(
+            "company",
+            "Company",
+            0,
+            Garages:
+            [
+                new("garage.phoenix", "Phoenix", 0, 0, 0, 0)
+            ],
+            Drivers: [],
+            Trucks: [],
+            Missions: [],
+            TrailerTypes: [],
+            Trailers:
+            [
+                new("trailer.1", "_nameless.26b.dd5f.13a0", 100, 1, BodyType: "dry_van", GarageId: "garage.phoenix")
+            ]);
+
+        var row = Wpf.ViewModels.Rows.Trailer(company, company.Trailers!.Single());
+        var detail = new Wpf.ViewModels.TrailerDetailViewModel(company, company.Trailers!.Single());
+
+        Assert.Equal("Dry Van", row.Body);
+        Assert.Equal("Phoenix", row.Location);
+        Assert.DoesNotContain("_nameless", row.Body, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("_nameless", detail.Subtitle, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("_nameless", detail.Tabs.Single(tab => tab.Title == "Overview").Overview!.Header.Subtitle, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void Wpf_driver_rows_show_profit_per_distance()
     {
         Assert.Equal(

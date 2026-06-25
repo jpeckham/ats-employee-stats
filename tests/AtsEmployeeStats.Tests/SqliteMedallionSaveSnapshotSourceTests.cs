@@ -458,14 +458,14 @@ public sealed class SqliteMedallionSaveSnapshotSourceTests : IDisposable
                 reader => (reader.GetString(0), reader.GetString(1), reader.GetInt64(2), reader.GetInt32(3))));
 
         Assert.Equal(
-            ("trailer.reefer.1", "trailer_def.scs.box.reefer", 5500L, 2),
-            await QuerySingleAsync<(string, string, long, int)>(
+            ("trailer.reefer.1", "trailer_def.scs.box.reefer", "trailer_def.scs.box.reefer", 5500L, 2),
+            await QuerySingleAsync<(string, string, string, long, int)>(
                 connection,
                 """
-                select trailer_id, trailer_type, profit, job_count
+                select trailer_id, trailer_type, definition_source_name, profit, job_count
                 from silver_trailers
                 """,
-                reader => (reader.GetString(0), reader.GetString(1), reader.GetInt64(2), reader.GetInt32(3))));
+                reader => (reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetInt64(3), reader.GetInt32(4))));
 
         Assert.Equal(
             ("company", "desert-line", 200, 3000L, 1),
@@ -1131,6 +1131,12 @@ public sealed class SqliteMedallionSaveSnapshotSourceTests : IDisposable
 
             trailer : trailer.reefer.1 {
               trailer_definition: trailer_def.scs.box.reefer
+            }
+
+            trailer_def : trailer_def.scs.box.reefer {
+              body_type: "refrigerated"
+              chain_type: single
+              source_name: trailer_def.scs.box.reefer
             }
 
             job : job.outbound {

@@ -173,7 +173,7 @@ internal static class TrailerOverviewBuilder
     public static OverviewViewModel Build(CompanyDto company, TrailerDto trailer)
     {
         var jobs = company.Missions.Where(job => Same(job.TrailerLicensePlate, trailer.LicensePlate) || Same(job.TrailerId, trailer.Id)).ToArray();
-        var overview = Create(trailer.LicensePlate ?? trailer.Id, $"{company.DisplayName} / Trailer / {trailer.TrailerType}", RowFormatting.Money(trailer.Profit, company.CurrencySymbol));
+        var overview = Create(trailer.LicensePlate ?? trailer.Id, $"{company.DisplayName} / Trailer / {TrailerTypeName(trailer)}", RowFormatting.Money(trailer.Profit, company.CurrencySymbol));
         AddCards(
             overview,
             ("Profit", RowFormatting.Money(trailer.Profit, company.CurrencySymbol), "Trailer total"),

@@ -61,6 +61,10 @@ public sealed record GridRowViewModel(
     public string ProfitPerDistance { get; init; } = string.Empty;
 
     public decimal ProfitPerDistanceSort { get; init; }
+
+    public string Body { get; init; } = string.Empty;
+
+    public string Location { get; init; } = string.Empty;
 }
 
 internal static class TableColumns
@@ -115,7 +119,8 @@ internal static class TableColumns
     [
         new("Name", nameof(GridRowViewModel.Name), Width: 2),
         new("Profit", nameof(GridRowViewModel.Profit), nameof(GridRowViewModel.ProfitSort)),
-        new("Type / Location", nameof(GridRowViewModel.Detail), Width: 2),
+        new("Body", nameof(GridRowViewModel.Body)),
+        new("Location", nameof(GridRowViewModel.Location)),
         new("Jobs", nameof(GridRowViewModel.Secondary), nameof(GridRowViewModel.SecondarySort)),
         new("Trend", nameof(GridRowViewModel.Trend), Width: 1.2, IsTrend: true)
     ];

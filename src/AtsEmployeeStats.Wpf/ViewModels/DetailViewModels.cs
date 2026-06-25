@@ -133,12 +133,12 @@ public sealed class TruckDetailViewModel : EntityDetailViewModel
 public sealed class TrailerDetailViewModel : EntityDetailViewModel
 {
     public TrailerDetailViewModel(CompanyDto company, TrailerDto trailer)
-        : base(trailer.LicensePlate ?? trailer.Id, $"{company.DisplayName} / Trailers / {trailer.TrailerType}", RowFormatting.Money(trailer.Profit, company.CurrencySymbol))
+        : base(trailer.LicensePlate ?? trailer.Id, $"{company.DisplayName} / Trailers / {TrailerTypeName(trailer)}", RowFormatting.Money(trailer.Profit, company.CurrencySymbol))
     {
         Metrics.Add(new("Jobs", RowFormatting.Count(trailer.JobCount)));
         Metrics.Add(new("Avg/day", RowFormatting.Money(trailer.ProfitPerDay, company.CurrencySymbol)));
         Metrics.Add(new("Garage", GarageName(company, trailer.GarageId)));
-        Metrics.Add(new("Type", trailer.TrailerType));
+        Metrics.Add(new("Body", TrailerTypeName(trailer)));
         Tabs.Add(new("Overview", TrailerOverviewBuilder.Build(company, trailer)));
         Tabs.Add(new("Jobs", company.Missions.Where(job => Same(job.TrailerLicensePlate, trailer.LicensePlate) || Same(job.TrailerId, trailer.Id)).Select(job => Rows.Job(company, job)), TableColumns.Jobs));
         Tabs.Add(new("Trucks", company.Missions.Where(job => Same(job.TrailerLicensePlate, trailer.LicensePlate) || Same(job.TrailerId, trailer.Id)).Where(job => !string.IsNullOrWhiteSpace(job.TruckId)).Select(job => job.TruckId!).Distinct(StringComparer.OrdinalIgnoreCase).Select(id => company.Trucks.FirstOrDefault(truck => Same(truck.Id, id))).Where(truck => truck is not null).Select(truck => Rows.Truck(company, truck!)), TableColumns.Trucks));
@@ -211,11 +211,13 @@ internal static class Rows
         };
 
     public static GridRowViewModel Trailer(CompanyDto company, TrailerDto trailer) =>
-        new(trailer.LicensePlate ?? trailer.Id, RowFormatting.Money(trailer.Profit, company.CurrencySymbol), $"{trailer.TrailerType} / {GarageName(company, trailer.GarageId)}", $"{trailer.JobCount:N0} jobs", RowFormatting.Trend(trailer.Trend), trailer)
+        new(trailer.LicensePlate ?? trailer.Id, RowFormatting.Money(trailer.Profit, company.CurrencySymbol), $"{TrailerTypeName(trailer)} / {GarageName(company, trailer.GarageId)}", $"{trailer.JobCount:N0} jobs", RowFormatting.Trend(trailer.Trend), trailer)
         {
             Target = new(ExplorerNodeKind.Trailer, company.Id, trailer.LicensePlate ?? trailer.Id),
             ProfitSort = trailer.Profit,
-            SecondarySort = trailer.JobCount
+            SecondarySort = trailer.JobCount,
+            Body = TrailerTypeName(trailer),
+            Location = GarageName(company, trailer.GarageId)
         };
 
     public static GridRowViewModel Job(CompanyDto company, MissionDto job) =>
@@ -273,4 +275,22 @@ internal static class DetailHelpers
 
     public static string TruckName(CompanyDto company, string? id) =>
         string.IsNullOrWhiteSpace(id) ? "-" : company.Trucks.FirstOrDefault(x => Same(x.Id, id))?.DisplayName ?? id;
+
+    public static string TrailerTypeName(TrailerDto trailer)
+    {
+        if (!string.IsNullOrWhiteSpace(trailer.BodyType))
+        {
+            return FormatIdentifier(trailer.BodyType);
+        }
+
+        return string.IsNullOrWhiteSpace(trailer.TrailerType) ||
+            trailer.TrailerType.StartsWith("_nameless", StringComparison.OrdinalIgnoreCase)
+                ? "Unknown"
+                : FormatIdentifier(trailer.TrailerType);
+    }
+
+    private static string FormatIdentifier(string value) =>
+        string.Join(' ', value
+            .Split(['_', '-', '.', '/'], StringSplitOptions.RemoveEmptyEntries)
+            .Select(part => part.Length == 0 ? part : char.ToUpperInvariant(part[0]) + part[1..].ToLowerInvariant()));
 }

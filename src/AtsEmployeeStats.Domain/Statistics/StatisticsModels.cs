@@ -167,7 +167,8 @@ public sealed record TrailerStatistic(
     bool IsArticulated = false,
     string? BodyType = null,
     string? GarageId = null,
-    string? LicensePlate = null);
+    string? LicensePlate = null,
+    string? DefinitionSourceName = null);
 
 public sealed record CityStatistic(
     string Id,
