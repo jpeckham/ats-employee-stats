@@ -62,6 +62,10 @@ public sealed record GridRowViewModel(
 
     public decimal ProfitPerDistanceSort { get; init; }
 
+    public string ProfitPerDay { get; init; } = string.Empty;
+
+    public decimal ProfitPerDaySort { get; init; }
+
     public string Body { get; init; } = string.Empty;
 
     public string Location { get; init; } = string.Empty;
@@ -157,6 +161,16 @@ internal static class TableColumns
             new(RowFormatting.IsEts2(company.Id) ? "Profit/Kilometer" : "Profit/Mile", nameof(GridRowViewModel.Secondary), nameof(GridRowViewModel.SecondarySort))
         ];
 
+    public static IReadOnlyList<TableColumnViewModel> RouteLoopsFor(CompanyDto company) =>
+        [
+            new("Loop", nameof(GridRowViewModel.Name), Width: 2),
+            new("Profit", nameof(GridRowViewModel.Profit), nameof(GridRowViewModel.ProfitSort)),
+            new("Loops", nameof(GridRowViewModel.Detail), nameof(GridRowViewModel.DetailSort)),
+            new(RowFormatting.IsEts2(company.Id) ? "Profit/Kilometer" : "Profit/Mile", nameof(GridRowViewModel.Secondary), nameof(GridRowViewModel.SecondarySort)),
+            new("Trailer Body", nameof(GridRowViewModel.Body)),
+            new("Profit/Game Day", nameof(GridRowViewModel.ProfitPerDay), nameof(GridRowViewModel.ProfitPerDaySort))
+        ];
+
     public static readonly IReadOnlyList<TableColumnViewModel> Cities =
     [
         new("City", nameof(GridRowViewModel.Name), Width: 2),
@@ -186,6 +200,14 @@ internal static class RowFormatting
 
         var unit = IsEts2(companyId) ? "km" : "mi";
         return string.Create(CultureInfo.InvariantCulture, $"{currencySymbol}{value:0.00}/{unit}");
+    }
+
+    public static string MoneyPerDay(decimal value, string currencySymbol)
+    {
+        if (value == 0)
+            return "-";
+
+        return string.Create(CultureInfo.InvariantCulture, $"{currencySymbol}{value:N0}/day");
     }
 
     public static bool IsEts2(string companyId) =>

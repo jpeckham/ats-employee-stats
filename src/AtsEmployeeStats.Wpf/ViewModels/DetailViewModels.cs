@@ -96,6 +96,162 @@ public sealed class GarageDetailViewModel : EntityDetailViewModel
         Tabs.Add(new("Drivers", company.Drivers.Where(x => Same(x.GarageId, garage.Id)).Select(driver => Rows.Driver(company, driver)), TableColumns.Drivers));
         Tabs.Add(new("Trucks", company.Trucks.Where(x => Same(x.GarageId, garage.Id)).Select(truck => Rows.Truck(company, truck)), TableColumns.Trucks));
         Tabs.Add(new("Trailers", (company.Trailers ?? []).Where(x => Same(x.GarageId, garage.Id)).Select(trailer => Rows.Trailer(company, trailer)), TableColumns.Trailers));
+        Tabs.Add(new("Routes", GarageRouteRows(company, garage), TableColumns.RoutesFor(company)));
+        Tabs.Add(new("Route Loops", GarageRouteLoopRows(company, garage), TableColumns.RouteLoopsFor(company)));
+    }
+
+    private static IEnumerable<GridRowViewModel> GarageRouteRows(CompanyDto company, GarageDto garage)
+    {
+        return company.Missions
+            .Where(job => Same(job.GarageId, garage.Id))
+            .Where(job => !string.IsNullOrWhiteSpace(job.SourceCity) && !string.IsNullOrWhiteSpace(job.TargetCity))
+            .GroupBy(job => new RouteGroupKey(job.SourceCity!, job.TargetCity!), RouteGroupKeyComparer.Instance)
+            .Select(group =>
+            {
+                var profit = group.Sum(job => job.Profit);
+                var distance = group.Sum(job => job.Distance ?? 0);
+                var profitPerDistance = distance > 0
+                    ? Math.Round(profit / (decimal)distance, 2, MidpointRounding.AwayFromZero)
+                    : 0;
+
+                return new GridRowViewModel(
+                    $"{group.Key.OriginCityId} to {group.Key.DestinationCityId}",
+                    RowFormatting.Money(profit, company.CurrencySymbol),
+                    $"{group.Count():N0} jobs",
+                    RowFormatting.MoneyPerDistance(profitPerDistance, company.Id, company.CurrencySymbol),
+                    [])
+                {
+                    ProfitSort = profit,
+                    DetailSort = group.Count(),
+                    SecondarySort = profitPerDistance
+                };
+            })
+            .OrderByDescending(row => row.ProfitSort);
+    }
+
+    private static IEnumerable<GridRowViewModel> GarageRouteLoopRows(CompanyDto company, GarageDto garage)
+    {
+        var garageCityId = ExtractGarageCityId(garage.Id);
+        return company.Missions
+            .Where(job => Same(job.GarageId, garage.Id))
+            .Where(job => !string.IsNullOrWhiteSpace(job.SourceCity) && !string.IsNullOrWhiteSpace(job.TargetCity))
+            .Where(job => Same(job.SourceCity, garageCityId) || Same(job.TargetCity, garageCityId))
+            .Select(job => new
+            {
+                Job = job,
+                OtherCityId = Same(job.SourceCity, garageCityId) ? job.TargetCity! : job.SourceCity!
+            })
+            .GroupBy(item => item.OtherCityId, StringComparer.OrdinalIgnoreCase)
+            .Select(group =>
+            {
+                var jobs = group.Select(item => item.Job).ToArray();
+                var outboundCount = jobs.Count(job => Same(job.SourceCity, garageCityId));
+                var returnCount = jobs.Count(job => Same(job.TargetCity, garageCityId));
+                var loopCount = Math.Max(outboundCount, returnCount);
+                var profit = jobs.Sum(job => job.Profit);
+                var distance = LoopDistanceWithInferredReturns(jobs, garageCityId, outboundCount, returnCount);
+                var profitPerDistance = distance > 0
+                    ? Math.Round(profit / (decimal)distance, 2, MidpointRounding.AwayFromZero)
+                    : 0;
+                var profitPerDay = ProfitPerGameDay(profit, jobs);
+
+                return new GridRowViewModel(
+                    $"{garageCityId} <-> {group.Key}",
+                    RowFormatting.Money(profit, company.CurrencySymbol),
+                    $"{loopCount:N0} loops",
+                    RowFormatting.MoneyPerDistance(profitPerDistance, company.Id, company.CurrencySymbol),
+                    [])
+                {
+                    ProfitSort = profit,
+                    DetailSort = loopCount,
+                    SecondarySort = profitPerDistance,
+                    Body = MostCommonTrailerBody(company, jobs),
+                    ProfitPerDay = RowFormatting.MoneyPerDay(profitPerDay, company.CurrencySymbol),
+                    ProfitPerDaySort = profitPerDay
+                };
+            })
+            .OrderByDescending(row => row.ProfitSort);
+    }
+
+    private static int LoopDistanceWithInferredReturns(
+        IReadOnlyCollection<MissionDto> jobs,
+        string garageCityId,
+        int outboundCount,
+        int returnCount)
+    {
+        var recordedDistance = jobs.Sum(job => job.Distance ?? 0);
+        if (outboundCount == returnCount)
+            return recordedDistance;
+
+        var outboundDistances = jobs
+            .Where(job => Same(job.SourceCity, garageCityId) && job.Distance is > 0)
+            .Select(job => job.Distance!.Value)
+            .ToArray();
+        var returnDistances = jobs
+            .Where(job => Same(job.TargetCity, garageCityId) && job.Distance is > 0)
+            .Select(job => job.Distance!.Value)
+            .ToArray();
+
+        if (outboundCount > returnCount && outboundDistances.Length > 0)
+            return recordedDistance + ImputeMissingDistance(outboundDistances, outboundCount - returnCount);
+
+        if (returnCount > outboundCount && returnDistances.Length > 0)
+            return recordedDistance + ImputeMissingDistance(returnDistances, returnCount - outboundCount);
+
+        return recordedDistance;
+    }
+
+    private static int ImputeMissingDistance(IReadOnlyCollection<int> knownDistances, int missingCount) =>
+        (int)Math.Round(knownDistances.Average() * missingCount, MidpointRounding.AwayFromZero);
+
+    private static decimal ProfitPerGameDay(long profit, IReadOnlyCollection<MissionDto> jobs)
+    {
+        var days = jobs
+            .Select(job => job.TimestampDay)
+            .Where(day => day.HasValue)
+            .Select(day => day!.Value)
+            .ToArray();
+        if (days.Length != jobs.Count)
+            return 0;
+
+        var dayCount = days.Max() - days.Min() + 1;
+        return dayCount > 0
+            ? Math.Round(profit / (decimal)dayCount, 0, MidpointRounding.AwayFromZero)
+            : 0;
+    }
+
+    private static string MostCommonTrailerBody(CompanyDto company, IReadOnlyCollection<MissionDto> jobs) =>
+        jobs
+            .Select(job => TrailerBodyName(company, job))
+            .Where(body => !string.IsNullOrWhiteSpace(body))
+            .GroupBy(body => body, StringComparer.OrdinalIgnoreCase)
+            .OrderByDescending(group => group.Count())
+            .ThenBy(group => group.Key, StringComparer.OrdinalIgnoreCase)
+            .Select(group => group.Key)
+            .FirstOrDefault() ?? "-";
+
+    private static string ExtractGarageCityId(string garageId)
+    {
+        var dot = garageId.IndexOf('.');
+        return dot >= 0 && dot + 1 < garageId.Length ? garageId[(dot + 1)..] : garageId;
+    }
+
+    private sealed record RouteGroupKey(string OriginCityId, string DestinationCityId);
+
+    private sealed class RouteGroupKeyComparer : IEqualityComparer<RouteGroupKey>
+    {
+        public static readonly RouteGroupKeyComparer Instance = new();
+
+        public bool Equals(RouteGroupKey? left, RouteGroupKey? right) =>
+            left is not null &&
+            right is not null &&
+            Same(left.OriginCityId, right.OriginCityId) &&
+            Same(left.DestinationCityId, right.DestinationCityId);
+
+        public int GetHashCode(RouteGroupKey value) =>
+            HashCode.Combine(
+                StringComparer.OrdinalIgnoreCase.GetHashCode(value.OriginCityId),
+                StringComparer.OrdinalIgnoreCase.GetHashCode(value.DestinationCityId));
     }
 }
 
@@ -286,6 +442,21 @@ internal static class DetailHelpers
             trailer.TrailerType.StartsWith("_nameless", StringComparison.OrdinalIgnoreCase)
                 ? "Unknown"
                 : FormatIdentifier(trailer.TrailerType);
+    }
+
+    public static string TrailerBodyName(CompanyDto company, MissionDto job)
+    {
+        if ((company.Trailers ?? []).FirstOrDefault(trailer =>
+            (!string.IsNullOrWhiteSpace(job.TrailerLicensePlate) && Same(trailer.LicensePlate, job.TrailerLicensePlate)) ||
+            (!string.IsNullOrWhiteSpace(job.TrailerId) && Same(trailer.Id, job.TrailerId))) is { } trailer)
+        {
+            return TrailerTypeName(trailer);
+        }
+
+        return string.IsNullOrWhiteSpace(job.TrailerType) ||
+            job.TrailerType.StartsWith("_nameless", StringComparison.OrdinalIgnoreCase)
+                ? string.Empty
+                : FormatIdentifier(job.TrailerType);
     }
 
     private static string FormatIdentifier(string value) =>

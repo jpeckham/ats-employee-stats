@@ -516,6 +516,93 @@ public sealed class WpfPresentationMigrationTests
     }
 
     [Fact]
+    public void Wpf_garage_detail_routes_are_aggregated_from_jobs_attributed_to_that_garage()
+    {
+        var company = new AtsEmployeeStats.Contracts.CompanyDto(
+            "company",
+            "Company",
+            0,
+            Garages:
+            [
+                new("garage.las_vegas", "Las Vegas", 0, 0, 1, 1),
+                new("garage.phoenix", "Phoenix", 0, 0, 1, 1)
+            ],
+            Drivers: [],
+            Trucks: [],
+            Missions:
+            [
+                new("job.1", null, null, null, "Cargo", "las_vegas", "phoenix", 3000, GarageId: "garage.las_vegas", Distance: 300),
+                new("job.2", null, null, null, "Cargo", "las_vegas", "phoenix", 1500, GarageId: "garage.las_vegas", Distance: 150),
+                new("return.loss", null, null, null, null, "phoenix", "las_vegas", -500, GarageId: "garage.las_vegas", Distance: 250),
+                new("job.3", null, null, null, "Cargo", "phoenix", "las_vegas", 9000, GarageId: "garage.phoenix", Distance: 300)
+            ],
+            TrailerTypes: [],
+            CurrencySymbol: "$");
+
+        var detail = new Wpf.ViewModels.GarageDetailViewModel(company, company.Garages.First());
+        var routesTab = detail.Tabs.Single(tab => tab.Title == "Routes");
+        var outbound = routesTab.Rows.Single(row => row.Name == "las_vegas to phoenix");
+        var returnLoss = routesTab.Rows.Single(row => row.Name == "phoenix to las_vegas");
+
+        Assert.DoesNotContain(detail.Tabs, tab => tab.Title == "Deadheads");
+        Assert.Equal("$4,500", outbound.Profit);
+        Assert.Equal("2 jobs", outbound.Detail);
+        Assert.Equal("$10.00/mi", outbound.Secondary);
+        Assert.Equal("$-500", returnLoss.Profit);
+        Assert.Equal("1 jobs", returnLoss.Detail);
+        Assert.Equal("$-2.00/mi", returnLoss.Secondary);
+    }
+
+    [Fact]
+    public void Wpf_garage_detail_route_loops_pair_outbound_and_return_routes()
+    {
+        var company = new AtsEmployeeStats.Contracts.CompanyDto(
+            "company",
+            "Company",
+            0,
+            Garages:
+            [
+                new("garage.las_vegas", "Las Vegas", 0, 0, 1, 1),
+                new("garage.phoenix", "Phoenix", 0, 0, 1, 1)
+            ],
+            Drivers: [],
+            Trucks: [],
+            Missions:
+            [
+                new("outbound.1", null, null, "trailer_def.scs.flatbed", "Cargo", "las_vegas", "phoenix", 3000, 1, TrailerId: "trailer.flatbed.1", GarageId: "garage.las_vegas", Distance: 300),
+                new("outbound.2", null, null, "trailer_def.scs.box.reefer", "Cargo", "las_vegas", "phoenix", 1500, 2, TrailerId: "trailer.reefer.1", GarageId: "garage.las_vegas", Distance: 150),
+                new("return.loss", null, null, "trailer_def.scs.box.reefer", null, "phoenix", "las_vegas", -500, 3, TrailerId: "trailer.reefer.1", GarageId: "garage.las_vegas", Distance: 250),
+                new("not.garage.touching", null, null, null, "Cargo", "topeka", "clovis", 7130, 4, GarageId: "garage.las_vegas", Distance: 1046),
+                new("other.garage", null, null, null, "Cargo", "phoenix", "las_vegas", 9000, 4, GarageId: "garage.phoenix", Distance: 300)
+            ],
+            TrailerTypes: [],
+            Trailers:
+            [
+                new("trailer.flatbed.1", "trailer_def.scs.flatbed", 0, 1, BodyType: "flatbed"),
+                new("trailer.reefer.1", "trailer_def.scs.box.reefer", 0, 2, BodyType: "refrigerated")
+            ],
+            CurrencySymbol: "$");
+
+        var loopsTab = new Wpf.ViewModels.GarageDetailViewModel(company, company.Garages.First())
+            .Tabs.Single(tab => tab.Title == "Route Loops");
+        var row = Assert.Single(loopsTab.Rows);
+
+        Assert.Contains(loopsTab.Columns, column => column.Header == "Profit/Game Day");
+        Assert.Contains(loopsTab.Columns, column => column.Header == "Trailer Body" && column.BindingPath == nameof(Wpf.ViewModels.GridRowViewModel.Body));
+        Assert.DoesNotContain(loopsTab.Rows, row => row.Name == "las_vegas <-> topeka");
+        Assert.Equal("las_vegas <-> phoenix", row.Name);
+        Assert.Equal("$4,000", row.Profit);
+        Assert.Equal("2 loops", row.Detail);
+        Assert.Equal("$4.32/mi", row.Secondary);
+        Assert.Equal("$1,333/day", row.ProfitPerDay);
+        Assert.Equal("Refrigerated", row.Body);
+        Assert.Equal(4000, row.ProfitSort);
+        Assert.Equal(2, row.DetailSort);
+        Assert.Equal(4.32m, row.SecondarySort);
+        Assert.Equal(1333m, row.ProfitPerDaySort);
+    }
+
+    [Fact]
     public void Wpf_trailer_rows_do_not_show_nameless_type_identifiers()
     {
         Assert.Contains(Wpf.ViewModels.TableColumns.Trailers, column => column.Header == "Body" && column.BindingPath == nameof(Wpf.ViewModels.GridRowViewModel.Body));
